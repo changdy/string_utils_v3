@@ -5,7 +5,7 @@
         x:Class="StrToolkit.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="文本小军刀"
-        Width="740" Height="400"
+        Width="760" Height="400"
         CanResize="False"
         SystemDecorations="None"
         Opacity="0.9"
@@ -15,7 +15,8 @@
         Background="Transparent"
         WindowStartupLocation="Manual">
 
-    <Grid ColumnDefinitions="*,50">
+    <!-- 正文仍保持 690px；右侧按 1.2 倍 Hover 尺寸及点击回弹预留绘制空间。 -->
+    <Grid ColumnDefinitions="*,70">
         <!--
           左侧文本区：背景与描边拆成两层。
           Avalonia 的 Border 会把 Background 画在 BorderThickness 内侧，
@@ -186,51 +187,160 @@
                       Padding="0"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Hidden">
-            <ItemsControl ItemsSource="{Binding VisibleSolvers}" Margin="0" Padding="0">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <StackPanel Orientation="Vertical" Spacing="4" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:SolverItemViewModel">
-                        <Border Width="50" Height="40"
-                                CornerRadius="0,20,20,0"
-                                Cursor="Hand"
-                                Classes.selected="{Binding IsSelected}"
-                                PointerPressed="OnSolverIconPressed"
-                                ToolTip.Tip="{Binding Describe}">
-                            <Border.Styles>
-                                <Style Selector="Border">
-                                    <Setter Property="Background" Value="#B0E0E6" />
-                                </Style>
-                                <Style Selector="Border.selected">
-                                    <Setter Property="Background">
-                                        <Setter.Value>
-                                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                                                <GradientStop Color="#87E9A4" Offset="0" />
-                                                <GradientStop Color="#ADC5FF" Offset="0.4" />
-                                                <GradientStop Color="#00FFFF" Offset="0.7" />
-                                                <GradientStop Color="#ADFF2F" Offset="1" />
+            <Grid ClipToBounds="False">
+                <ItemsControl ItemsSource="{Binding VisibleSolvers}"
+                              Margin="0"
+                              Padding="0">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Vertical" Spacing="4" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SolverItemViewModel">
+                            <Border Width="50" Height="40"
+                                    HorizontalAlignment="Left"
+                                    CornerRadius="0,20,20,0"
+                                    ClipToBounds="True"
+                                    Cursor="Hand"
+                                    RenderTransformOrigin="0%,50%"
+                                    Classes.selected="{Binding IsSelected}"
+                                    PointerEntered="OnSolverIconEntered"
+                                    PointerExited="OnSolverIconExited"
+                                    PointerPressed="OnSolverIconPressed"
+                                    ToolTip.Tip="{Binding Describe}">
+                                <Border.Transitions>
+                                    <Transitions>
+                                        <DoubleTransition Property="Width" Duration="0:0:0.18" />
+                                        <DoubleTransition Property="Height" Duration="0:0:0.18" />
+                                    </Transitions>
+                                </Border.Transitions>
+                                <Border.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1">
+                                            <ScaleTransform.Transitions>
+                                                <Transitions>
+                                                    <DoubleTransition Property="ScaleX" Duration="0:0:0.09" />
+                                                    <DoubleTransition Property="ScaleY" Duration="0:0:0.09" />
+                                                </Transitions>
+                                            </ScaleTransform.Transitions>
+                                        </ScaleTransform>
+                                        <TranslateTransform X="0" Y="0">
+                                            <TranslateTransform.Transitions>
+                                                <Transitions>
+                                                    <DoubleTransition Property="Y" Duration="0:0:0.09" />
+                                                </Transitions>
+                                            </TranslateTransform.Transitions>
+                                        </TranslateTransform>
+                                    </TransformGroup>
+                                </Border.RenderTransform>
+                                <Border.Styles>
+                                    <Style Selector="Border">
+                                        <Setter Property="Background" Value="#B0E0E6" />
+                                    </Style>
+                                    <Style Selector="Border.selected">
+                                        <Setter Property="Background">
+                                            <Setter.Value>
+                                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                                    <GradientStop Color="#87E9A4" Offset="0" />
+                                                    <GradientStop Color="#ADC5FF" Offset="0.4" />
+                                                    <GradientStop Color="#00FFFF" Offset="0.7" />
+                                                    <GradientStop Color="#ADFF2F" Offset="1" />
+                                                </LinearGradientBrush>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Border.Styles>
+
+                                <Grid>
+                                    <!-- 按钮宽高参与布局动画；图标在自身基准尺寸上同步放大 1.2 倍。 -->
+                                    <Grid Width="36" Height="36"
+                                          Margin="2,2,0,0"
+                                          HorizontalAlignment="Left"
+                                          VerticalAlignment="Center"
+                                          RenderTransformOrigin="0%,50%"
+                                          Name="SolverIconMotion">
+                                        <Grid.RenderTransform>
+                                            <ScaleTransform ScaleX="1" ScaleY="1">
+                                                <ScaleTransform.Transitions>
+                                                    <Transitions>
+                                                        <DoubleTransition Property="ScaleX" Duration="0:0:0.18" />
+                                                        <DoubleTransition Property="ScaleY" Duration="0:0:0.18" />
+                                                    </Transitions>
+                                                </ScaleTransform.Transitions>
+                                            </ScaleTransform>
+                                        </Grid.RenderTransform>
+                                        <Image Source="{Binding Icon}"
+                                               Stretch="Uniform"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               RenderTransformOrigin="50%,50%">
+                                            <Image.RenderTransform>
+                                                <ScaleTransform ScaleX="{Binding IconScale}"
+                                                                ScaleY="{Binding IconScale}" />
+                                            </Image.RenderTransform>
+                                        </Image>
+                                    </Grid>
+
+                                    <!-- 每次执行只扫过一次的轻量高光，替代原先 360 度旋转。 -->
+                                    <Border Name="SolverClickSheen"
+                                            Width="12"
+                                            Height="58"
+                                            Opacity="0"
+                                            HorizontalAlignment="Left"
+                                            VerticalAlignment="Center"
+                                            IsHitTestVisible="False">
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,0%">
+                                                <GradientStop Color="#00FFFFFF" Offset="0" />
+                                                <GradientStop Color="#BFFFFFFF" Offset="0.5" />
+                                                <GradientStop Color="#00FFFFFF" Offset="1" />
                                             </LinearGradientBrush>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </Border.Styles>
-                            <!-- 固定槽位居中 + Uniform：非正方形 SVG（如 json-diff 22x28）视觉大小更一致 -->
-                            <Grid Width="36" Height="36"
-                                  Margin="2,2,0,0"
-                                  HorizontalAlignment="Left"
-                                  VerticalAlignment="Center">
-                                <Image Source="{Binding Icon}"
-                                       Stretch="Uniform"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                                        </Border.Background>
+                                        <Border.RenderTransform>
+                                            <TransformGroup>
+                                                <RotateTransform Angle="-18" />
+                                                <TranslateTransform X="-24" />
+                                            </TransformGroup>
+                                        </Border.RenderTransform>
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- 选中轮廓沿功能列表滑动；静止后只保留轮廓和柔光，不循环播放。 -->
+                <Border Name="SolverSelectionPill"
+                        Width="50"
+                        Height="40"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        CornerRadius="0,20,20,0"
+                        Background="#16FFFFFF"
+                        BorderBrush="#D900CED1"
+                        BorderThickness="2"
+                        Opacity="0"
+                        IsHitTestVisible="False"
+                        ZIndex="10">
+                    <Border.Effect>
+                        <DropShadowEffect OffsetX="0"
+                                          OffsetY="1"
+                                          BlurRadius="8"
+                                          Color="#8000CED1" />
+                    </Border.Effect>
+                    <Border.Transitions>
+                        <Transitions>
+                            <DoubleTransition Property="Opacity" Duration="0:0:0.1" />
+                            <DoubleTransition Property="Width" Duration="0:0:0.18" />
+                            <DoubleTransition Property="Height" Duration="0:0:0.18" />
+                        </Transitions>
+                    </Border.Transitions>
+                    <Border.RenderTransform>
+                        <TranslateTransform X="0" Y="0" />
+                    </Border.RenderTransform>
+                </Border>
+            </Grid>
         </ScrollViewer>
     </Grid>
 </Window>

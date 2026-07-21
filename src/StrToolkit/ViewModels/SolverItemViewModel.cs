@@ -16,6 +16,10 @@ public partial class SolverItemViewModel : ObservableObject
     public string Name => Solver.Name;
     public string Describe => Solver.Describe;
 
+    // json-diff 的 SVG 是较窄的 22x28；在 36x36 的 Uniform 槽位中视觉面积偏小。
+    // 单独略微放大，保持宽高比，并与 Electron 版的显示大小接近。
+    public double IconScale => Name == "json-diff" ? 1.1 : 1.0;
+
     [ObservableProperty]
     private bool _isSelected;
 
