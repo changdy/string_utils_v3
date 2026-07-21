@@ -204,7 +204,6 @@
                                     ClipToBounds="True"
                                     Cursor="Hand"
                                     RenderTransformOrigin="0%,50%"
-                                    Classes.selected="{Binding IsSelected}"
                                     PointerEntered="OnSolverIconEntered"
                                     PointerExited="OnSolverIconExited"
                                     PointerPressed="OnSolverIconPressed"
@@ -237,18 +236,6 @@
                                 <Border.Styles>
                                     <Style Selector="Border">
                                         <Setter Property="Background" Value="#B0E0E6" />
-                                    </Style>
-                                    <Style Selector="Border.selected">
-                                        <Setter Property="Background">
-                                            <Setter.Value>
-                                                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                                                    <GradientStop Color="#87E9A4" Offset="0" />
-                                                    <GradientStop Color="#ADC5FF" Offset="0.4" />
-                                                    <GradientStop Color="#00FFFF" Offset="0.7" />
-                                                    <GradientStop Color="#ADFF2F" Offset="1" />
-                                                </LinearGradientBrush>
-                                            </Setter.Value>
-                                        </Setter>
                                     </Style>
                                 </Border.Styles>
 
@@ -309,37 +296,6 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-
-                <!-- 选中轮廓沿功能列表滑动；静止后只保留轮廓和柔光，不循环播放。 -->
-                <Border Name="SolverSelectionPill"
-                        Width="50"
-                        Height="40"
-                        HorizontalAlignment="Left"
-                        VerticalAlignment="Top"
-                        CornerRadius="0,20,20,0"
-                        Background="#16FFFFFF"
-                        BorderBrush="#D900CED1"
-                        BorderThickness="2"
-                        Opacity="0"
-                        IsHitTestVisible="False"
-                        ZIndex="10">
-                    <Border.Effect>
-                        <DropShadowEffect OffsetX="0"
-                                          OffsetY="1"
-                                          BlurRadius="8"
-                                          Color="#8000CED1" />
-                    </Border.Effect>
-                    <Border.Transitions>
-                        <Transitions>
-                            <DoubleTransition Property="Opacity" Duration="0:0:0.1" />
-                            <DoubleTransition Property="Width" Duration="0:0:0.18" />
-                            <DoubleTransition Property="Height" Duration="0:0:0.18" />
-                        </Transitions>
-                    </Border.Transitions>
-                    <Border.RenderTransform>
-                        <TranslateTransform X="0" Y="0" />
-                    </Border.RenderTransform>
-                </Border>
             </Grid>
         </ScrollViewer>
     </Grid>
