@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
 using StrToolkit.Services;
 using StrToolkit.ViewModels;
@@ -29,6 +31,7 @@ public partial class MainWindow : Window
     /// 避免「读完后窗口已关 / 新一次唤醒」把过期结果写回。
     /// </summary>
     private int _clipboardLoadGeneration;
+    private int _enterAnimationGeneration;
 
     /// <summary>唤醒显示前调用：短时间内忽略激活过程中的瞬时失焦，避免窗口闪烁。</summary>
     public void MarkWake() => _lastWake = DateTime.UtcNow;
@@ -146,6 +149,7 @@ public partial class MainWindow : Window
                 e.Handled = true;
                 break;
             case Key.Enter when !e.KeyModifiers.HasFlag(KeyModifiers.Shift):
+                PlayEnterAnimation();
                 ExecuteSelected();
                 e.Handled = true;
                 break;
@@ -154,12 +158,40 @@ public partial class MainWindow : Window
 
     private void OnEnterButtonClick(object? sender, RoutedEventArgs e)
     {
+        PlayEnterAnimation();
         if (ViewModel is { ChangeHotKeyMode: true } vm)
         {
             HotkeySaveRequested?.Invoke(vm.CapturedHotkey);
             return;
         }
         ExecuteSelected();
+    }
+
+    private async void PlayEnterAnimation()
+    {
+        if (EnterButton.TranslatePoint(
+                new Point(EnterButton.Bounds.Width / 2, EnterButton.Bounds.Height / 2),
+                EnterBubbleLayer) is { } center)
+        {
+            EnterBubbleLayer.Start(center, EnterButton.Bounds.Size);
+        }
+
+        int generation = Interlocked.Increment(ref _enterAnimationGeneration);
+        if (EnterButton.RenderTransform is not ScaleTransform scale)
+        {
+            return;
+        }
+        scale.ScaleX = 0.9;
+        scale.ScaleY = 0.9;
+
+        await Task.Delay(90);
+        if (generation != Volatile.Read(ref _enterAnimationGeneration))
+        {
+            return;
+        }
+
+        scale.ScaleX = 1;
+        scale.ScaleY = 1;
     }
 
     private void ExecuteSelected()
