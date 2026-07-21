@@ -24,6 +24,17 @@ public partial class SolverItemViewModel : ObservableObject
     private bool _isSelected;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ButtonWidth))]
+    [NotifyPropertyChangedFor(nameof(IconOffset))]
+    private bool _isPulledOut;
+
+    /// <summary>抽出时保持左边缘不动，仅把按钮右边缘延长 8px。</summary>
+    public double ButtonWidth => IsPulledOut ? 58 : 50;
+
+    /// <summary>图标与按钮右边缘同步向右移动。</summary>
+    public double IconOffset => IsPulledOut ? 8 : 0;
+
+    [ObservableProperty]
     private bool _isVisible = true;
 
     public IImage? Icon { get; }

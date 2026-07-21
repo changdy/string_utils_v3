@@ -10,6 +10,8 @@ namespace StrToolkit.ViewModels;
 public partial class MainWindowViewModel : ObservableObject
 {
     private readonly SettingsService _settings;
+    private SolverItemViewModel? _hoveredSolver;
+    private bool _isSolverAreaHovered;
 
     public ObservableCollection<SolverItemViewModel> Solvers { get; } = new();
 
@@ -60,8 +62,13 @@ public partial class MainWindowViewModel : ObservableObject
         {
             item.IsSelected = false;
         }
+        if (!visible && ReferenceEquals(_hoveredSolver, item))
+        {
+            _hoveredSolver = null;
+        }
 
         RebuildVisibleSolvers();
+        RefreshPullOutState();
     }
 
     /// <summary>按 Solvers 顺序重建可见列表，保证工具栏顺序与间距稳定。</summary>
@@ -120,6 +127,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             best.IsSelected = true;
         }
+        RefreshPullOutState();
     }
 
     public void SelectSolver(SolverItemViewModel target)
@@ -134,6 +142,50 @@ public partial class MainWindowViewModel : ObservableObject
             item.IsSelected = false;
         }
         target.IsSelected = true;
+        RefreshPullOutState();
+    }
+
+    /// <summary>
+    /// 悬停优先于默认选中：存在悬停项时只抽出悬停项；没有悬停项时抽出选中项。
+    /// </summary>
+    public void SetSolverHovered(SolverItemViewModel target, bool isHovered)
+    {
+        if (isHovered)
+        {
+            if (target.IsVisible)
+            {
+                _hoveredSolver = target;
+            }
+        }
+        else if (ReferenceEquals(_hoveredSolver, target))
+        {
+            _hoveredSolver = null;
+        }
+
+        RefreshPullOutState();
+    }
+
+    /// <summary>
+    /// 跟踪鼠标是否仍位于整个功能区。位于按钮间隙时不恢复默认选中项。
+    /// </summary>
+    public void SetSolverAreaHovered(bool isHovered)
+    {
+        _isSolverAreaHovered = isHovered;
+        if (!isHovered)
+        {
+            _hoveredSolver = null;
+        }
+        RefreshPullOutState();
+    }
+
+    private void RefreshPullOutState()
+    {
+        foreach (var item in Solvers)
+        {
+            item.IsPulledOut = item.IsVisible && (_hoveredSolver is not null
+                ? ReferenceEquals(item, _hoveredSolver)
+                : !_isSolverAreaHovered && item.IsSelected);
+        }
     }
 
     /// <summary>执行当前选中的处理器，返回结果文本（应写回剪贴板），无选中时返回 null。</summary>
