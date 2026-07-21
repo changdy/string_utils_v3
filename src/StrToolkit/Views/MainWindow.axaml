@@ -207,6 +207,8 @@
                                     Cursor="Hand"
                                     RenderTransformOrigin="0%,50%"
                                     PointerPressed="OnSolverIconPressed"
+                                    ToolTip.ShowDelay="1500"
+                                    ToolTip.BetweenShowDelay="-1"
                                     ToolTip.Tip="{Binding Describe}">
                                 <Border.RenderTransform>
                                     <TransformGroup>
