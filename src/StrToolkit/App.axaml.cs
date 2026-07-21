@@ -72,6 +72,9 @@ public partial class App : Application
         };
 
         base.OnFrameworkInitializationCompleted();
+
+        // 首次启动也应给出可见反馈；后续仍保持失焦隐藏、快捷键和托盘唤醒语义。
+        Dispatcher.UIThread.Post(ShowWindowAtCursor);
     }
 
     private List<ISolver> BuildSolvers()

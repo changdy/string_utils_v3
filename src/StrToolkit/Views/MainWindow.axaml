@@ -15,7 +15,7 @@
         Background="Transparent"
         WindowStartupLocation="Manual">
 
-    <!-- 正文仍保持 690px；右侧按 1.2 倍 Hover 尺寸及点击回弹预留绘制空间。 -->
+    <!-- 左侧为主窗口内容，右侧为功能按钮栏。 -->
     <Grid ColumnDefinitions="*,70">
         <!--
           左侧文本区：背景与描边拆成两层。
@@ -106,6 +106,7 @@
                                 IsHitTestVisible="False" />
 
                         <Button Name="EnterButton"
+                                Classes="enter-confirm-button"
                                 Padding="7,4"
                                 FontSize="22"
                                 Opacity="0.85"
@@ -199,21 +200,14 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SolverItemViewModel">
                             <Border Width="50" Height="40"
+                                    Classes="solver-function-button"
                                     HorizontalAlignment="Left"
                                     CornerRadius="0,20,20,0"
                                     ClipToBounds="True"
                                     Cursor="Hand"
                                     RenderTransformOrigin="0%,50%"
-                                    PointerEntered="OnSolverIconEntered"
-                                    PointerExited="OnSolverIconExited"
                                     PointerPressed="OnSolverIconPressed"
                                     ToolTip.Tip="{Binding Describe}">
-                                <Border.Transitions>
-                                    <Transitions>
-                                        <DoubleTransition Property="Width" Duration="0:0:0.18" />
-                                        <DoubleTransition Property="Height" Duration="0:0:0.18" />
-                                    </Transitions>
-                                </Border.Transitions>
                                 <Border.RenderTransform>
                                     <TransformGroup>
                                         <ScaleTransform ScaleX="1" ScaleY="1">
@@ -240,24 +234,13 @@
                                 </Border.Styles>
 
                                 <Grid>
-                                    <!-- 按钮宽高参与布局动画；图标在自身基准尺寸上同步放大 1.2 倍。 -->
                                     <Grid Width="36" Height="36"
+                                          Name="SolverIconContainer"
                                           Margin="2,2,0,0"
                                           HorizontalAlignment="Left"
-                                          VerticalAlignment="Center"
-                                          RenderTransformOrigin="0%,50%"
-                                          Name="SolverIconMotion">
-                                        <Grid.RenderTransform>
-                                            <ScaleTransform ScaleX="1" ScaleY="1">
-                                                <ScaleTransform.Transitions>
-                                                    <Transitions>
-                                                        <DoubleTransition Property="ScaleX" Duration="0:0:0.18" />
-                                                        <DoubleTransition Property="ScaleY" Duration="0:0:0.18" />
-                                                    </Transitions>
-                                                </ScaleTransform.Transitions>
-                                            </ScaleTransform>
-                                        </Grid.RenderTransform>
-                                        <Image Source="{Binding Icon}"
+                                          VerticalAlignment="Center">
+                                        <Image Name="SolverIcon"
+                                               Source="{Binding Icon}"
                                                Stretch="Uniform"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"

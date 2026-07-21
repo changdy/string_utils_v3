@@ -9,7 +9,6 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
-using Avalonia.VisualTree;
 using StrToolkit.Services;
 using StrToolkit.ViewModels;
 
@@ -38,12 +37,6 @@ public partial class MainWindow : Window
     private int _clipboardLoadGeneration;
     private int _enterAnimationGeneration;
     private readonly Dictionary<Control, int> _solverAnimationGenerations = new();
-
-    private const double SolverNormalWidth = 50;
-    private const double SolverNormalHeight = 40;
-    private const double SolverHoverScale = 1.2;
-    private const double SolverHoverWidth = SolverNormalWidth * SolverHoverScale;
-    private const double SolverHoverHeight = SolverNormalHeight * SolverHoverScale;
 
     /// <summary>唤醒显示前调用：短时间内忽略激活过程中的瞬时失焦，避免窗口闪烁。</summary>
     public void MarkWake() => _lastWake = DateTime.UtcNow;
@@ -249,41 +242,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnSolverIconEntered(object? sender, PointerEventArgs e)
-    {
-        if (sender is not Control control)
-        {
-            return;
-        }
-        ApplySolverHoverLayout(control, true);
-    }
-
-    private void OnSolverIconExited(object? sender, PointerEventArgs e)
-    {
-        if (sender is not Control control)
-        {
-            return;
-        }
-        ApplySolverHoverLayout(control, false);
-    }
-
-    private static void ApplySolverHoverLayout(Control control, bool hovered)
-    {
-        control.Width = hovered ? SolverHoverWidth : SolverNormalWidth;
-        control.Height = hovered ? SolverHoverHeight : SolverNormalHeight;
-        if (control is Border border)
-        {
-            double radius = hovered ? 26 : 20;
-            border.CornerRadius = new CornerRadius(0, radius, radius, 0);
-        }
-        if (FindSolverPart<Grid>(control, "SolverIconMotion")?.RenderTransform is ScaleTransform iconScale)
-        {
-            double value = hovered ? SolverHoverScale : 1;
-            iconScale.ScaleX = value;
-            iconScale.ScaleY = value;
-        }
-    }
-
     private async void PlaySolverClickAnimation(Control control)
     {
         int generation = _solverAnimationGenerations.TryGetValue(control, out int current)
@@ -322,12 +280,11 @@ public partial class MainWindow : Window
 
         scale.ScaleX = 1;
         scale.ScaleY = 1;
-        ApplySolverHoverLayout(control, control.IsPointerOver);
     }
 
     private async Task PlaySolverSheenAsync(Control control, int generation)
     {
-        var sheen = FindSolverPart<Border>(control, "SolverClickSheen");
+        var sheen = GetSolverClickSheen(control);
         if (sheen?.RenderTransform is not TransformGroup group ||
             group.Children.OfType<TranslateTransform>().FirstOrDefault() is not { } translate)
         {
@@ -367,8 +324,13 @@ public partial class MainWindow : Window
             group.Children.OfType<TranslateTransform>().FirstOrDefault());
     }
 
-    private static T? FindSolverPart<T>(Control root, string name) where T : Control =>
-        root.GetVisualDescendants().OfType<T>().FirstOrDefault(control => control.Name == name);
+    /// <summary>按结构定位点击高光 Border：Border → Grid → Border[1]。</summary>
+    private static Border? GetSolverClickSheen(Control control)
+    {
+        if (control is not Border { Child: Grid innerGrid }) return null;
+        if (innerGrid.Children.Count < 2) return null;
+        return innerGrid.Children[1] as Border;
+    }
 
     private void CaptureHotkey(KeyEventArgs e, MainWindowViewModel vm)
     {
