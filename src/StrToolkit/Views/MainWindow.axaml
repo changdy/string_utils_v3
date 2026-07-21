@@ -74,26 +74,93 @@
                         </TextBox.Styles>
                     </TextBox>
 
-                    <!-- Enter 按钮（右下角悬浮） -->
-                    <Button Name="EnterButton"
-                            HorizontalAlignment="Right"
-                            VerticalAlignment="Bottom"
-                            Margin="0,0,20,20"
-                            Padding="10,4"
-                            FontSize="20"
-                            Cursor="Hand"
-                            Foreground="White"
-                            Background="#00CED1"
-                            CornerRadius="4"
-                            Click="OnEnterButtonClick">
-                        <Button.Styles>
-                            <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                <Setter Property="Background" Value="White" />
-                                <Setter Property="Foreground" Value="#00CED1" />
-                            </Style>
-                        </Button.Styles>
-                        Enter
-                    </Button>
+                    <!-- Enter 按钮（右下角悬浮）：复刻 Electron 的边框、阴影和 hover 图标展开。 -->
+                    <Grid HorizontalAlignment="Right"
+                          VerticalAlignment="Bottom"
+                          Margin="0,0,20,20"
+                          ClipToBounds="False">
+                        <!--
+                          阴影必须放在 Button 外层；模板内的阴影会被控件布局边界裁掉。
+                          该图层随按钮（包括 hover 展开后的宽度）同步伸缩，但不参与命中测试。
+                        -->
+                        <Border Background="#00CED1"
+                                CornerRadius="4"
+                                Opacity="0.85"
+                                IsHitTestVisible="False">
+                            <Border.Effect>
+                                <DropShadowEffect OffsetX="0"
+                                                  OffsetY="2"
+                                                  BlurRadius="32"
+                                                  Color="#CC48D1CC" />
+                            </Border.Effect>
+                        </Border>
+
+                        <!-- 隔离阴影载体的实色，防止透过 0.85 透明度的按钮造成颜色叠加。 -->
+                        <Border Background="AliceBlue"
+                                CornerRadius="4"
+                                IsHitTestVisible="False" />
+
+                        <Button Name="EnterButton"
+                                Padding="7,4"
+                                FontSize="22"
+                                Opacity="0.85"
+                                Cursor="Hand"
+                                Foreground="White"
+                                Background="#00CED1"
+                                BorderBrush="#00CED1"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Click="OnEnterButtonClick">
+                            <Button.Styles>
+                                <Style Selector="Button:pointerover /template/ Border#EnterButtonSurface">
+                                    <Setter Property="Background" Value="White" />
+                                </Style>
+                                <Style Selector="Button:pointerover /template/ TextBlock#EnterButtonText">
+                                    <Setter Property="Foreground" Value="#00CED1" />
+                                </Style>
+                                <Style Selector="Button:pointerover /template/ Image#EnterButtonIcon">
+                                    <Setter Property="Width" Value="22" />
+                                    <Setter Property="Height" Value="22" />
+                                </Style>
+                            </Button.Styles>
+
+                            <!-- 图标放在控件模板内，hover 选择器可稳定命中并执行过渡。 -->
+                            <Button.Template>
+                                <ControlTemplate>
+                                    <Border Name="EnterButtonSurface"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="{TemplateBinding CornerRadius}"
+                                            Padding="{TemplateBinding Padding}">
+                                        <StackPanel Orientation="Horizontal"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Name="EnterButtonText"
+                                                       Text="Enter"
+                                                       Foreground="{TemplateBinding Foreground}"
+                                                       FontSize="{TemplateBinding FontSize}"
+                                                       LineHeight="22"
+                                                       VerticalAlignment="Center" />
+                                            <Image Name="EnterButtonIcon"
+                                                   Source="avares://StrToolkit/Assets/app-icon/tray-icon.png"
+                                                   Width="0"
+                                                   Height="0"
+                                                   Margin="5,0,0,0"
+                                                   Stretch="Uniform"
+                                                   VerticalAlignment="Center">
+                                                <Image.Transitions>
+                                                    <Transitions>
+                                                        <DoubleTransition Property="Width" Duration="0:0:0.2" />
+                                                        <DoubleTransition Property="Height" Duration="0:0:0.2" />
+                                                    </Transitions>
+                                                </Image.Transitions>
+                                            </Image>
+                                        </StackPanel>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>
