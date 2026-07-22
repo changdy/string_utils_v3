@@ -12,6 +12,7 @@
 
 #define MyAppName "StrToolkit"
 #define MyAppExeName "StrToolkit.exe"
+#define MyAppIcon "..\..\src\StrToolkit\Assets\app-icon\StrToolkit.ico"
 #define MyAppPublisher "changdy"
 #define MyAppUrl "https://github.com/changdy/string_utils_v3"
 
@@ -31,6 +32,7 @@ OutputBaseFilename=StrToolkit-Setup-win-x86
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile={#MyAppIcon}
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x86compatible
 CloseApplications=yes
@@ -50,8 +52,8 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
-Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "StrToolkit"; Flags: uninsdeletevalue
