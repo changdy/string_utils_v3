@@ -74,3 +74,19 @@ dotnet publish src/StrToolkit -c Release -r linux-x64 --self-contained -p:Publis
 dotnet publish src/StrToolkit -c Release -r osx-x64   --self-contained -p:PublishSingleFile=true
 dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true
 ```
+
+## GitHub Actions 自动打包
+
+工作流 `.github/workflows/package.yml` 会生成以下 Actions Artifacts：
+
+- Windows x86：`StrToolkit-win-x86.zip`
+- macOS Apple Silicon：`StrToolkit-osx-arm64.tar.gz`
+- macOS Intel：`StrToolkit-osx-x64.tar.gz`
+- Linux x64：`StrToolkit-linux-x64.tar.gz`
+
+可在 GitHub Actions 页面手动运行 `Package`，或推送 `v*` 格式的版本标签自动触发：
+
+```bash
+git tag v4.0.0
+git push origin v4.0.0
+```

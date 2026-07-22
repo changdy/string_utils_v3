@@ -1,0 +1,153 @@
+name: Package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  prepare-web-assets:
+    name: Prepare web assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Prepare JSON preview assets
+        run: node scripts/prepare-web-assets.mjs --output .web-assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload web assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-assets
+          path: .web-assets
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  package:
+    name: Package ${{ matrix.label }}
+    needs: prepare-web-assets
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x86
+            os: windows-2022
+            rid: win-x86
+            artifact: StrToolkit-win-x86
+            archive: StrToolkit-win-x86.zip
+            format: zip
+          - label: macOS ARM64
+            os: macos-15
+            rid: osx-arm64
+            artifact: StrToolkit-osx-arm64
+            archive: StrToolkit-osx-arm64.tar.gz
+            format: tar
+          - label: macOS Intel x64
+            os: macos-15-intel
+            rid: osx-x64
+            artifact: StrToolkit-osx-x64
+            archive: StrToolkit-osx-x64.tar.gz
+            format: tar
+          - label: Linux x64
+            os: ubuntu-24.04
+            rid: linux-x64
+            artifact: StrToolkit-linux-x64
+            archive: StrToolkit-linux-x64.tar.gz
+            format: tar
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Download prepared web assets
+        uses: actions/download-artifact@v4
+        with:
+          name: web-assets
+          path: .web-assets
+
+      - name: Publish ${{ matrix.rid }}
+        run: >-
+          dotnet publish src/StrToolkit/StrToolkit.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:PrepareWebAssetsOnPublish=false
+          -o publish/${{ matrix.rid }}
+
+      - name: Copy prepared web assets
+        shell: pwsh
+        run: |
+          $output = "publish/${{ matrix.rid }}"
+          Copy-Item -LiteralPath ".web-assets/jsonhero-frontend" -Destination $output -Recurse -Force
+          Copy-Item -LiteralPath ".web-assets/json-crack" -Destination $output -Recurse -Force
+          Copy-Item `
+            -LiteralPath ".web-assets/versions.json" `
+            -Destination (Join-Path $output "web-assets-versions.json") `
+            -Force
+
+      - name: Verify published files
+        shell: pwsh
+        run: |
+          $output = "publish/${{ matrix.rid }}"
+          $executable = if ($IsWindows) { "StrToolkit.exe" } else { "StrToolkit" }
+          $required = @(
+            (Join-Path $output $executable),
+            (Join-Path $output "jsonhero-frontend/index.html"),
+            (Join-Path $output "json-crack/editor.html"),
+            (Join-Path $output "web-assets-versions.json")
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path -LiteralPath $path)) {
+              throw "Required published file is missing: $path"
+            }
+          }
+
+      - name: Create ZIP archive
+        if: matrix.format == 'zip'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
+          Compress-Archive `
+            -Path "publish/${{ matrix.rid }}/*" `
+            -DestinationPath "artifacts/${{ matrix.archive }}" `
+            -CompressionLevel Optimal
+
+      - name: Create tar.gz archive
+        if: matrix.format == 'tar'
+        shell: bash
+        run: |
+          mkdir -p artifacts
+          tar -C "publish/${{ matrix.rid }}" -czf "artifacts/${{ matrix.archive }}" .
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: artifacts/${{ matrix.archive }}
+          if-no-files-found: error
