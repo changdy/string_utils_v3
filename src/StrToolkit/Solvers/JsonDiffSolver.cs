@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 
 namespace StrToolkit.Solvers;
@@ -7,6 +8,12 @@ namespace StrToolkit.Solvers;
 /// <summary>JSON Diff：输入必须是包含两个对象的数组，用 VSCode 做可视化对比。</summary>
 public sealed class JsonDiffSolver : ISolver
 {
+    private static readonly JsonSerializerOptions DiffJsonOptions = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private readonly Action<string, string> _openDiff;
 
     public JsonDiffSolver(Action<string, string> openDiff)
@@ -52,9 +59,8 @@ public sealed class JsonDiffSolver : ISolver
     public string Transfer(string logs, string[] arr, bool jsonFlag)
     {
         using var doc = JsonDocument.Parse(logs);
-        var options = new JsonSerializerOptions { WriteIndented = true };
-        var obj1 = JsonSerializer.Serialize(doc.RootElement[0], options);
-        var obj2 = JsonSerializer.Serialize(doc.RootElement[1], options);
+        var obj1 = JsonSerializer.Serialize(doc.RootElement[0], DiffJsonOptions);
+        var obj2 = JsonSerializer.Serialize(doc.RootElement[1], DiffJsonOptions);
         _openDiff(obj1, obj2);
         return "正在打开差异对比... (如未找到VSCode将无法打开)";
     }
