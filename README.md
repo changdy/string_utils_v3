@@ -79,12 +79,13 @@ dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:Publis
 
 工作流 `.github/workflows/package.yml` 会生成以下 Actions Artifacts：
 
-- Windows x86：`StrToolkit-win-x86.zip`
+- Windows x86 安装程序：`StrToolkit-Setup-win-x86.exe`
 - macOS Apple Silicon：`StrToolkit-osx-arm64.tar.gz`
 - macOS Intel：`StrToolkit-osx-x64.tar.gz`
 - Linux x64：`StrToolkit-linux-x64.tar.gz`
 
-可在 GitHub Actions 页面手动运行 `Package`，或推送 `v*` 格式的版本标签自动触发：
+可在 GitHub Actions 页面手动运行 `Package` 生成 Artifacts。推送 `v*` 格式的版本标签时，
+工作流还会自动创建对应的 GitHub Release、生成 Release Notes，并上传全部四个平台安装包：
 
 ```bash
 git tag v4.0.0
