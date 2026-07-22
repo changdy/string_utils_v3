@@ -10,17 +10,14 @@
     <AssemblyName>StrToolkit</AssemblyName>
     <RootNamespace>StrToolkit</RootNamespace>
     <Version>4.0.0</Version>
+    <WebAssetsDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../.web-assets'))</WebAssetsDirectory>
+    <PrepareWebAssetsOnBuild Condition="'$(PrepareWebAssetsOnBuild)' == '' and '$(Configuration)' == 'Debug'">true</PrepareWebAssetsOnBuild>
+    <PrepareWebAssetsOnBuild Condition="'$(PrepareWebAssetsOnBuild)' == ''">false</PrepareWebAssetsOnBuild>
+    <PrepareWebAssetsOnPublish Condition="'$(PrepareWebAssetsOnPublish)' == ''">true</PrepareWebAssetsOnPublish>
   </PropertyGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
-  <ItemGroup Condition="Exists('..\..\..\json-hero-frontend\dist')">
-    <Content Include="..\..\..\json-hero-frontend\dist\**\*"
-             Link="jsonhero-frontend\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
@@ -35,4 +32,86 @@
     <PackageReference Include="Jint" Version="4.2.2" />
     <PackageReference Include="SharpHook" Version="5.3.8" />
   </ItemGroup>
+
+  <!--
+    Visual Studio/F5 bootstrap: a clean Debug checkout prepares the assets once.
+    Existing assets are intentionally not checked against GitHub on every build;
+    publishing performs that latest-release check.
+  -->
+  <Target Name="PrepareWebAssetsForLocalBuild"
+          BeforeTargets="Build"
+          Condition="'$(PrepareWebAssetsOnBuild)' == 'true' and
+                     (!Exists('$(WebAssetsDirectory)/jsonhero-frontend/index.html') or
+                      !Exists('$(WebAssetsDirectory)/json-crack/editor.html'))">
+    <Message Importance="high"
+             Text="Web preview assets are missing. Preparing latest JSON Hero and JSONCrack assets for local debugging..." />
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../.."
+          Command="node &quot;$(MSBuildProjectDirectory)/../../scripts/prepare-web-assets.mjs&quot; --output &quot;$(WebAssetsDirectory)&quot;" />
+    <Error Condition="!Exists('$(WebAssetsDirectory)/jsonhero-frontend/index.html')"
+           Text="JSON Hero static assets were not prepared for local debugging." />
+    <Error Condition="!Exists('$(WebAssetsDirectory)/json-crack/editor.html')"
+           Text="JSONCrack static assets were not prepared for local debugging." />
+  </Target>
+
+  <!--
+    Collect after preparation instead of using an evaluation-time Content item.
+    This makes the very first VS build copy assets created during that same build.
+  -->
+  <Target Name="CopyWebAssetsToBuildOutput"
+          AfterTargets="Build"
+          DependsOnTargets="PrepareWebAssetsForLocalBuild"
+          Condition="Exists('$(WebAssetsDirectory)/jsonhero-frontend/index.html') and
+                     Exists('$(WebAssetsDirectory)/json-crack/editor.html')">
+    <ItemGroup>
+      <_JsonHeroBuildFiles Include="$(WebAssetsDirectory)/jsonhero-frontend/**/*" />
+      <_JsonCrackBuildFiles Include="$(WebAssetsDirectory)/json-crack/**/*" />
+      <_WebAssetBuildVersionFile Include="$(WebAssetsDirectory)/versions.json" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_JsonHeroBuildFiles)"
+          DestinationFiles="@(_JsonHeroBuildFiles->'$(TargetDir)jsonhero-frontend/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_JsonCrackBuildFiles)"
+          DestinationFiles="@(_JsonCrackBuildFiles->'$(TargetDir)json-crack/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WebAssetBuildVersionFile)"
+          DestinationFiles="@(_WebAssetBuildVersionFile->'$(TargetDir)web-assets-versions.json')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+    Publishing always resolves the latest releases. JSON Hero is downloaded as
+    a pre-built static archive; JSONCrack is built in a temporary directory.
+    The copy target includes only the two verified static output directories.
+  -->
+  <Target Name="PrepareWebAssetsForPublish"
+          BeforeTargets="Publish"
+          Condition="'$(PrepareWebAssetsOnPublish)' == 'true'">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)/../.."
+          Command="node &quot;$(MSBuildProjectDirectory)/../../scripts/prepare-web-assets.mjs&quot; --output &quot;$(WebAssetsDirectory)&quot;" />
+    <Error Condition="!Exists('$(WebAssetsDirectory)/jsonhero-frontend/index.html')"
+           Text="JSON Hero static assets were not prepared." />
+    <Error Condition="!Exists('$(WebAssetsDirectory)/json-crack/editor.html')"
+           Text="JSONCrack static assets were not prepared." />
+
+    <ItemGroup>
+      <_JsonHeroPublishFiles Include="$(WebAssetsDirectory)/jsonhero-frontend/**/*" />
+      <_JsonCrackPublishFiles Include="$(WebAssetsDirectory)/json-crack/**/*" />
+      <_WebAssetVersionFile Include="$(WebAssetsDirectory)/versions.json" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="CopyWebAssetsToPublishDirectory"
+          AfterTargets="Publish"
+          DependsOnTargets="PrepareWebAssetsForPublish"
+          Condition="'$(PrepareWebAssetsOnPublish)' == 'true'">
+    <Copy SourceFiles="@(_JsonHeroPublishFiles)"
+          DestinationFiles="@(_JsonHeroPublishFiles->'$(PublishDir)jsonhero-frontend/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_JsonCrackPublishFiles)"
+          DestinationFiles="@(_JsonCrackPublishFiles->'$(PublishDir)json-crack/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(_WebAssetVersionFile)"
+          DestinationFiles="@(_WebAssetVersionFile->'$(PublishDir)web-assets-versions.json')"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

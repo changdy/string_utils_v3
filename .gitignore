@@ -5,6 +5,11 @@
 [Tt]est[Rr]esults/
 .codex-build/
 
+# Generated JSON preview web assets (never version these build outputs)
+.web-assets/
+jsonhero-frontend/
+json-crack/
+
 # IDE and user-specific files
 .vs/
 .vscode/
