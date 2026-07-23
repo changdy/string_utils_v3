@@ -45,6 +45,7 @@ jobs:
           previous=""
           should_package="false"
           should_release="false"
+          tag="v$version"
 
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             should_package="true"
@@ -59,10 +60,14 @@ jobs:
             if [[ "$version" != "$previous" ]]; then
               should_package="true"
               should_release="true"
+            elif ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              # Retry a release whose earlier packaging run failed before
+              # creating its tag.
+              should_package="true"
+              should_release="true"
             fi
           fi
 
-          tag="v$version"
           if [[ "$should_release" == "true" ]] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
             tagged_commit="$(git rev-list -n 1 "$tag")"
             if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
