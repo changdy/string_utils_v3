@@ -1,3 +1,5 @@
+using System.Threading;
+
 namespace StrToolkit.Solvers;
 
 /// <summary>
@@ -20,6 +22,18 @@ public interface ISolver
     string? IconBasePath => null;
 
     int Check(string logs, string[] arr, bool jsonFlag);
+
+    /// <summary>
+    /// 支持取消的匹配检查。内置处理器通常很快，默认实现在调用前后检查取消；
+    /// 用户脚本可覆写此方法，把取消信号传入脚本运行时。
+    /// </summary>
+    int Check(string logs, string[] arr, bool jsonFlag, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        int score = Check(logs, arr, jsonFlag);
+        cancellationToken.ThrowIfCancellationRequested();
+        return score;
+    }
 
     string Transfer(string logs, string[] arr, bool jsonFlag);
 }

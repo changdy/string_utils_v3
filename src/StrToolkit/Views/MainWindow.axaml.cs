@@ -47,6 +47,7 @@ public partial class MainWindow : Window
     /// </summary>
     public void LoadClipboardFromWake()
     {
+        ViewModel?.CancelAutoSelect();
         int generation = Interlocked.Increment(ref _clipboardLoadGeneration);
         Log($"LoadClipboardFromWake gen={generation}");
         _ = ReadClipboardAndSelectAsync(generation);
@@ -81,6 +82,7 @@ public partial class MainWindow : Window
         Interlocked.Increment(ref _clipboardLoadGeneration);
         if (ViewModel is { } vm)
         {
+            vm.CancelAutoSelect();
             vm.ChangeHotKeyMode = false;
             vm.BodyText = "";
         }
@@ -118,8 +120,9 @@ public partial class MainWindow : Window
             Log($"clipboard text: {(text is null ? "<null>" : $"len={text.Length} [{(text.Length > 50 ? text[..50] : text)}]")}");
             if (!string.IsNullOrEmpty(text))
             {
-                vm.AutoSelect(text);
+                Task autoSelectTask = vm.AutoSelectAsync(text);
                 ResetBodyScroll();
+                await autoSelectTask;
             }
         }
         catch (Exception e)
