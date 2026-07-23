@@ -84,6 +84,7 @@ public partial class MainWindow : Window
             vm.ChangeHotKeyMode = false;
             vm.BodyText = "";
         }
+        ResetBodyScroll();
         Hide();
     }
 
@@ -118,6 +119,7 @@ public partial class MainWindow : Window
             if (!string.IsNullOrEmpty(text))
             {
                 vm.AutoSelect(text);
+                ResetBodyScroll();
             }
         }
         catch (Exception e)
@@ -208,6 +210,7 @@ public partial class MainWindow : Window
         string? result = vm.Execute();
         if (result is not null)
         {
+            ResetBodyScroll();
             _ = Dispatcher.UIThread.InvokeAsync(async () =>
             {
                 try
@@ -224,6 +227,11 @@ public partial class MainWindow : Window
             });
             ExecuteRequested?.Invoke();
         }
+    }
+
+    private void ResetBodyScroll()
+    {
+        BodyScrollViewer.Offset = default;
     }
 
     private void OnSolverIconPressed(object? sender, PointerPressedEventArgs e)

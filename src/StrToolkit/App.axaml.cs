@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -17,10 +19,15 @@ namespace StrToolkit;
 
 public partial class App : Application
 {
+    private static readonly TimeSpan WebServicesShutdownTimeout = TimeSpan.FromSeconds(5);
+
     private SettingsService _settings = null!;
     private HotkeyService? _hotkey;
     private JsonCrackServer _jsonCrack = null!;
     private JsonHeroService _jsonHero = null!;
+    private readonly CancellationTokenSource _webServicesLifetime = new();
+    private Task _webServicesStartupTask = Task.CompletedTask;
+    private int _webServicesShutdownStarted;
     private JsonPreviewService _preview = null!;
     private MainWindowViewModel _viewModel = null!;
     private MainWindow _mainWindow = null!;
@@ -42,12 +49,13 @@ public partial class App : Application
 
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+        VsCodeDiffService.CleanupTempFiles();
         _settings = new SettingsService();
         _jsonCrack = new JsonCrackServer();
         _jsonHero = new JsonHeroService();
         _preview = new JsonPreviewService(_jsonCrack, _jsonHero);
-        _ = _jsonCrack.StartAsync();
-        _ = _jsonHero.StartAsync();
+        _webServicesStartupTask = StartWebServicesAsync(_webServicesLifetime.Token);
+        desktop.Exit += OnApplicationExit;
 
         _viewModel = new MainWindowViewModel(_settings);
         foreach (var solver in BuildSolvers())
@@ -64,17 +72,77 @@ public partial class App : Application
         SingleInstance.SecondInstanceLaunched += () =>
             Dispatcher.UIThread.Post(() => ShowWindowAtCursor());
 
-        desktop.Exit += (_, _) =>
-        {
-            _hotkey?.Dispose();
-            _ = _jsonHero.StopAsync();
-            _ = _jsonCrack.StopAsync();
-        };
-
         base.OnFrameworkInitializationCompleted();
 
         // 首次启动也应给出可见反馈；后续仍保持失焦隐藏、快捷键和托盘唤醒语义。
         Dispatcher.UIThread.Post(ShowWindowAtCursor);
+    }
+
+    private async Task StartWebServicesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.WhenAll(
+                _jsonCrack.StartAsync(cancellationToken),
+                _jsonHero.StartAsync(cancellationToken))
+                .ConfigureAwait(false);
+
+            if (!_jsonCrack.IsRunning)
+            {
+                AppLog.Warn("JSONCrack Web 服务未能启动，相关预览功能不可用。");
+            }
+            if (!_jsonHero.IsRunning)
+            {
+                AppLog.Warn("JSON Hero Web 服务未能启动，相关预览功能不可用。");
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 应用退出时取消仍在进行的服务启动。
+        }
+        catch (Exception e)
+        {
+            AppLog.Error("Web 服务启动失败", e);
+        }
+    }
+
+    private void OnApplicationExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
+    {
+        _hotkey?.Dispose();
+
+        if (Interlocked.Exchange(ref _webServicesShutdownStarted, 1) != 0)
+        {
+            return;
+        }
+
+        using var timeout = new CancellationTokenSource(WebServicesShutdownTimeout);
+        try
+        {
+            _webServicesLifetime.Cancel();
+            StopWebServicesAsync(timeout.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+            AppLog.Warn($"Web 服务未能在 {WebServicesShutdownTimeout.TotalSeconds:0} 秒内停止。");
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Web 服务停止失败", exception);
+        }
+        finally
+        {
+            _webServicesLifetime.Dispose();
+        }
+    }
+
+    private async Task StopWebServicesAsync(CancellationToken cancellationToken)
+    {
+        await _webServicesStartupTask.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await Task.WhenAll(
+                _jsonHero.StopAsync(cancellationToken),
+                _jsonCrack.StopAsync(cancellationToken))
+            .WaitAsync(cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private List<ISolver> BuildSolvers()
@@ -131,7 +199,7 @@ public partial class App : Application
         }
     }
 
-    private static async System.Threading.Tasks.Task StartHotkeyAsync(HotkeyService hotkey)
+    private static async Task StartHotkeyAsync(HotkeyService hotkey)
     {
         if (!await hotkey.StartAsync())
         {

@@ -7,14 +7,51 @@ namespace StrToolkit.Services;
 /// <summary>调用 VSCode 打开 JSON 差异对比（对应 Electron 版的 open-diff）。</summary>
 public static class VsCodeDiffService
 {
+    public static string TempDirectory =>
+        Path.Combine(Path.GetTempPath(), "StrToolkit", "json-diff");
+
+    /// <summary>应用启动时清理上一次运行留下的 JSON Diff 临时文件。</summary>
+    public static void CleanupTempFiles()
+    {
+        CleanupTempFiles(TempDirectory);
+    }
+
+    private static void CleanupTempFiles(string directory)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(directory, "*.json", SearchOption.TopDirectoryOnly))
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception e)
+                {
+                    AppLog.Warn($"清理 JSON Diff 临时文件失败: {file}, {e.Message}");
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            AppLog.Error($"扫描 JSON Diff 临时目录失败: {directory}", e);
+        }
+    }
+
     public static void OpenDiff(string json1, string json2)
     {
         try
         {
+            Directory.CreateDirectory(TempDirectory);
             string timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString();
             string random = Guid.NewGuid().ToString("N")[..6];
-            string file1 = Path.Combine(Path.GetTempPath(), $"json-diff-{timestamp}-{random}-1.json");
-            string file2 = Path.Combine(Path.GetTempPath(), $"json-diff-{timestamp}-{random}-2.json");
+            string file1 = Path.Combine(TempDirectory, $"json-diff-{timestamp}-{random}-1.json");
+            string file2 = Path.Combine(TempDirectory, $"json-diff-{timestamp}-{random}-2.json");
             File.WriteAllText(file1, json1);
             File.WriteAllText(file2, json2);
 

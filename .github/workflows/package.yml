@@ -3,8 +3,10 @@ name: Package
 on:
   workflow_dispatch:
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
+    paths:
+      - "src/StrToolkit/StrToolkit.csproj"
 
 permissions:
   contents: read
@@ -14,8 +16,77 @@ env:
   DOTNET_NOLOGO: "1"
 
 jobs:
+  version:
+    name: Detect version change
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      should_package: ${{ steps.version.outputs.should_package }}
+      should_release: ${{ steps.version.outputs.should_release }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and compare project version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          project="src/StrToolkit/StrToolkit.csproj"
+          version="$(sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' "$project" | head -n 1)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid or missing semantic version in $project: $version"
+            exit 1
+          fi
+
+          previous=""
+          should_package="false"
+          should_release="false"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            should_package="true"
+          else
+            before="${{ github.event.before }}"
+            if [[ -n "$before" && ! "$before" =~ ^0+$ ]]; then
+              previous="$(git show "$before:$project" 2>/dev/null |
+                sed -n 's:.*<Version>\([^<]*\)</Version>.*:\1:p' |
+                head -n 1 || true)"
+            fi
+
+            if [[ "$version" != "$previous" ]]; then
+              should_package="true"
+              should_release="true"
+            fi
+          fi
+
+          tag="v$version"
+          if [[ "$should_release" == "true" ]] && git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            tagged_commit="$(git rev-list -n 1 "$tag")"
+            if [[ "$tagged_commit" != "$GITHUB_SHA" ]]; then
+              echo "::error::Tag $tag already exists at $tagged_commit instead of $GITHUB_SHA"
+              exit 1
+            fi
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "should_package=$should_package" >> "$GITHUB_OUTPUT"
+          echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Version detection"
+            echo "- Current: \`$version\`"
+            echo "- Previous: \`${previous:-not available}\`"
+            echo "- Package: \`$should_package\`"
+            echo "- Release: \`$should_release\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   prepare-web-assets:
     name: Prepare web assets
+    needs: version
+    if: needs.version.outputs.should_package == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -43,7 +114,10 @@ jobs:
 
   package:
     name: Package ${{ matrix.label }}
-    needs: prepare-web-assets
+    needs:
+      - version
+      - prepare-web-assets
+    if: needs.version.outputs.should_package == 'true'
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -176,8 +250,10 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: package
+    needs:
+      - version
+      - package
+    if: needs.version.outputs.should_release == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -211,12 +287,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: v${{ needs.version.outputs.version }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" release-assets/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/* \
-              --verify-tag \
-              --title "$GITHUB_REF_NAME" \
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TAG" \
               --generate-notes
           fi
