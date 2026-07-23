@@ -61,23 +61,19 @@ public sealed class JsonCrackServer
                 });
 
                 await app.StartAsync(cancellationToken).ConfigureAwait(false);
+                Console.WriteLine($"[json-crack] Server running at http://127.0.0.1:{port}/");
                 _app = app;
                 Port = port;
                 IsRunning = true;
-                Console.WriteLine($"[json-crack] Server running at http://127.0.0.1:{port}/");
+                app = null; // 所有权转交给服务实例，退出本轮时不释放。
                 return;
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                if (app is not null)
-                {
-                    await app.DisposeAsync().ConfigureAwait(false);
-                }
-                throw;
             }
             catch (IOException)
             {
                 // 端口被占用，尝试下一个
+            }
+            finally
+            {
                 if (app is not null)
                 {
                     await app.DisposeAsync().ConfigureAwait(false);
