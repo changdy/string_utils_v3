@@ -44,19 +44,25 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electr
 | 注入项 | Electron 版 | Avalonia 版 |
 |--------|-------------|-------------|
 | `require` | 指向应用 node_modules，可加载任意已装依赖 | ❌ 不支持 |
-| `CryptoJS` | crypto-js | ❌ 暂未桥接 |
-| `nodeCrypto` | Node `crypto` | ❌ 不支持 |
-| `forge` | node-forge | ❌ 暂未桥接 |
-| ES Module 相对导入 | 支持 | ✅ 支持（限脚本目录内的纯 JS 模块） |
+| `CryptoJS` | crypto-js | ❌ 不注入；用户脚本可自行打包纯 JS 依赖 |
+| `nodeCrypto` | Node `crypto` | ❌ 不支持；用户脚本需使用纯 JS 实现 |
+| `forge` | node-forge | ❌ 不注入；可自行打包，但需评估 Jint 性能和内存 |
+| ES Module 相对导入 | 支持 | ✅ 支持（限当前脚本包目录） |
 
 即：**只依赖纯 JS 逻辑（字符串/正则/JSON 处理）的用户脚本可以原样运行**；
-依赖 Node API 或加密库的脚本需要改造。后续可用 .NET `System.Security.Cryptography`
-桥接一个 `CryptoJS` 兼容层按需补齐。
+依赖 Node API 的脚本需要改造成浏览器兼容纯 JS，并在开发阶段打包。应用只通过
+`strToolkit` 全局对象提供通用环境变量读取：
+
+- `strToolkit.env.get(name)`：读取当前 StrToolkit 进程可见的任意环境变量
+
+客户端不实现具体用户脚本功能。随仓库提供的 decrypt 脚本包把固定版本 CryptoJS 打进 ESM，
+并在 JS 内使用原生 BigInt 实现 RSA PKCS#1 v1.5；运行时不依赖 npm 或 Node.js。
 
 其他差异：
 
 - `solver.style`（向页面注入 CSS）无对应物，**忽略该字段**。图标微调类样式不再生效。
 - 用户脚本目录改为 `str-toolkit-avalonia/user-scripts`（新应用独立配置目录，不与 Electron 版互抢）。
+- 推荐使用固定 `index.js` 入口的目录型脚本包；仍兼容根目录旧单文件脚本。
 - 与 Electron 版相同：新增/修改脚本后需重启应用。
 
 ## 4. JSON 预览

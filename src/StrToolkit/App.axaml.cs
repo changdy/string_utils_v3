@@ -159,11 +159,14 @@ public partial class App : Application
             new JsonDiffSolver(VsCodeDiffService.OpenDiff)
         };
 
-        // 加载用户脚本（Jint）
+        // 加载用户脚本（Jint）：兼容根目录旧单文件，并支持一级目录脚本包。
         if (Directory.Exists(SettingsService.UserScriptDir))
         {
-            foreach (var file in Directory.EnumerateFiles(SettingsService.UserScriptDir)
-                         .Where(f => f.EndsWith(".js", StringComparison.OrdinalIgnoreCase)))
+            foreach (var file in Directory.EnumerateFiles(
+                         SettingsService.UserScriptDir,
+                         "*.js",
+                         SearchOption.TopDirectoryOnly)
+                     .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
                 try
                 {
@@ -172,6 +175,25 @@ public partial class App : Application
                 catch (Exception e)
                 {
                     AppLog.Error($"加载用户脚本失败: {file}", e);
+                }
+            }
+
+            foreach (var directory in Directory.EnumerateDirectories(SettingsService.UserScriptDir)
+                         .OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!File.Exists(Path.Combine(directory, "index.js")))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    solvers.Add(JsUserScriptSolver.Load(
+                        UserScriptPackage.FromDirectory(directory)));
+                }
+                catch (Exception e)
+                {
+                    AppLog.Error($"加载用户脚本包失败: {directory}", e);
                 }
             }
         }

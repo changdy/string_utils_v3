@@ -10,7 +10,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>StrToolkit</AssemblyName>
     <RootNamespace>StrToolkit</RootNamespace>
-    <Version>4.0.5</Version>
+    <Version>4.0.6</Version>
     <WebAssetsDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../.web-assets'))</WebAssetsDirectory>
     <PrepareWebAssetsOnBuild Condition="'$(PrepareWebAssetsOnBuild)' == '' and '$(Configuration)' == 'Debug'">true</PrepareWebAssetsOnBuild>
     <PrepareWebAssetsOnBuild Condition="'$(PrepareWebAssetsOnBuild)' == ''">false</PrepareWebAssetsOnBuild>
@@ -19,6 +19,10 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <Content Include="..\..\user-scripts\**\*"
+             Link="bundled-user-scripts\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
