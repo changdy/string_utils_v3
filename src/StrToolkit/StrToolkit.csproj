@@ -22,8 +22,16 @@
                       Exclude="Assets\JsRuntime\**" />
     <EmbeddedResource Include="Assets\JsRuntime\crypto-js.min.js"
                       LogicalName="StrToolkit.Assets.JsRuntime.crypto-js.min.js" />
+    <EmbeddedResource Include="Assets\JsRuntime\dayjs.min.js"
+                      LogicalName="StrToolkit.Assets.JsRuntime.dayjs.min.js" />
+    <EmbeddedResource Include="Assets\JsRuntime\lodash.min.js"
+                      LogicalName="StrToolkit.Assets.JsRuntime.lodash.min.js" />
     <EmbeddedResource Include="Assets\JsRuntime\licenses\crypto-js.LICENSE.txt"
                       LogicalName="StrToolkit.Assets.JsRuntime.licenses.crypto-js.LICENSE.txt" />
+    <EmbeddedResource Include="Assets\JsRuntime\licenses\dayjs.LICENSE.txt"
+                      LogicalName="StrToolkit.Assets.JsRuntime.licenses.dayjs.LICENSE.txt" />
+    <EmbeddedResource Include="Assets\JsRuntime\licenses\lodash.LICENSE.txt"
+                      LogicalName="StrToolkit.Assets.JsRuntime.licenses.lodash.LICENSE.txt" />
   </ItemGroup>
 
   <ItemGroup>

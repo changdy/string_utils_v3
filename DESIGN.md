@@ -119,7 +119,8 @@ SharpHook KeyPressed (匹配 accelerator)
 - 每个包以自身目录作为 Jint 模块根目录，可相对导入包内 `.js` / `.mjs`
 - `check` / `transfer` 通过 Jint Invoke 调用，与内置处理器同台打分
 - 用户脚本由用户自行放入 ApplicationData 下的用户脚本目录；仓库示例不参与构建或自动安装
-- 客户端注入 `strToolkit.env.get(name)`，并通过白名单 `require` 提供内置通用库
+- 客户端注入 `strToolkit.env.get(name)`、浏览器风格 `atob` / `btoa`，并通过白名单
+  `require` 无条件加载 Lodash、Day.js、CryptoJS
 - 仓库的 `user-scripts-src` 只作为源码和实现参考，不参与应用打包
 - 限制见 DIFFERENCES.md（无 Node API / 通用 require / npm 运行时解析）
 
