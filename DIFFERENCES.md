@@ -57,7 +57,8 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electr
 - `require("lodash")`：获取应用内置 Lodash
 - `require("dayjs")`：获取应用内置 Day.js 核心
 - `require("crypto-js")`：获取应用内置 CryptoJS；不提供通用 Node 模块加载
-- `atob` / `btoa`：浏览器风格 Latin-1 Base64 转换，不直接支持 Unicode 文本
+- `base64Encode` / `base64Decode`：UTF-8 感知的 Base64 编解码，直接支持中文等
+  Unicode 文本；不提供浏览器风格的 `atob` / `btoa`
 
 内置库在每个用户脚本引擎中无条件加载。Jint 不提供浏览器事件循环，因此 Lodash 的
 `debounce` / `throttle` / `delay` / `defer` 等定时器 API 不受支持；Day.js 插件、语言包

@@ -82,8 +82,8 @@ const path = strToolkit.env.get("PATH");
 `env.get(name)` 可以读取当前 StrToolkit 进程可见的任意环境变量；不存在时返回空字符串。
 因此用户脚本应视为受信任代码，不应直接安装来源不明的脚本包。
 
-当前内置 Lodash 4.18.1、Day.js 1.11.21 和 CryptoJS 4.2.0，并提供浏览器风格的
-`atob` / `btoa`。用户脚本无需安装 npm 依赖：
+当前内置 Lodash 4.18.1、Day.js 1.11.21 和 CryptoJS 4.2.0，并提供 UTF-8 感知的
+`base64Encode` / `base64Decode`。用户脚本无需安装 npm 依赖：
 
 ```js
 const _ = require("lodash");
@@ -93,8 +93,8 @@ const CryptoJS = require("crypto-js");
 const unique = _.uniq([1, 1, 2]);
 const date = dayjs("2026-07-25").format("YYYY/MM/DD");
 const digest = CryptoJS.SHA256("hello").toString();
-const encoded = btoa("hello");
-const decoded = atob(encoded);
+const encoded = base64Encode("你好，世界");
+const decoded = base64Decode(encoded);
 ```
 
 这里的 `require` 只用于获取应用内置库，不是 Node.js 的模块加载器。请求其他模块会直接报错。
@@ -108,9 +108,9 @@ const decoded = atob(encoded);
 - 当前只内置 Day.js 核心，不包含额外插件和语言包。`require("dayjs/plugin/...")` 与
   `require("dayjs/locale/...")` 不受支持；时区和本地时间结果还会受到操作系统及 Jint
   日期实现影响。
-- 浏览器的 `atob` / `btoa` 操作的是 Latin-1 二进制字符串，不是 Unicode 文本。
-  `btoa("中文")` 会报错；处理 Unicode 时需要先自行转换为 UTF-8 字节串。
-  Jint 没有 DOMException，因此非法输入抛出的是 `TypeError`，错误类型与浏览器不完全一致。
+- `base64Encode` / `base64Decode` 按 UTF-8 编解码，直接支持中文等 Unicode 文本；
+  不提供浏览器风格的 `atob` / `btoa`。`base64Decode` 容忍输入中的空白字符和缺失的
+  填充，非法 Base64 输入抛出 `TypeError`；解码结果不是有效 UTF-8 文本时报错。
 - 用户脚本的 `check` / `transfer` 是同步调用。不要依赖定时回调、网络请求或未等待的 Promise。
 - 所有库都会为每个用户脚本引擎各加载一份。少量脚本影响很小，但大量脚本会增加启动时间和内存。
 - `_.template` 等能够执行模板表达式的 API 只应处理可信输入；用户脚本本身也应视为受信任代码。
@@ -218,7 +218,7 @@ dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:Publis
 四个平台安装包：
 
 ```xml
-<Version>4.0.6</Version>
+<Version>4.0.7</Version>
 ```
 
 版本标签已存在但指向其他提交时，发布会直接失败，避免覆盖历史版本。
