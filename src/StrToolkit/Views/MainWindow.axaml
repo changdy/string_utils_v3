@@ -188,7 +188,10 @@
                       Padding="0"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Hidden">
-            <Grid ClipToBounds="False">
+            <Grid ClipToBounds="False"
+                  Background="Transparent"
+                  PointerEntered="OnSolverAreaPointerEntered"
+                  PointerExited="OnSolverAreaPointerExited">
                 <ItemsControl ItemsSource="{Binding VisibleSolvers}"
                               Margin="0"
                               Padding="0">
@@ -199,17 +202,24 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SolverItemViewModel">
-                            <Border Width="50" Height="40"
+                            <Border Width="{Binding ButtonWidth}" Height="40"
                                     Classes="solver-function-button"
                                     HorizontalAlignment="Left"
                                     CornerRadius="0,20,20,0"
                                     ClipToBounds="True"
                                     Cursor="Hand"
                                     RenderTransformOrigin="0%,50%"
+                                    PointerEntered="OnSolverPointerEntered"
+                                    PointerExited="OnSolverPointerExited"
                                     PointerPressed="OnSolverIconPressed"
                                     ToolTip.ShowDelay="1500"
                                     ToolTip.BetweenShowDelay="-1"
                                     ToolTip.Tip="{Binding Describe}">
+                                <Border.Transitions>
+                                    <Transitions>
+                                        <DoubleTransition Property="Width" Duration="0:0:0.14" />
+                                    </Transitions>
+                                </Border.Transitions>
                                 <Border.RenderTransform>
                                     <TransformGroup>
                                         <ScaleTransform ScaleX="1" ScaleY="1">
@@ -241,6 +251,15 @@
                                           Margin="2,2,0,0"
                                           HorizontalAlignment="Left"
                                           VerticalAlignment="Center">
+                                        <Grid.RenderTransform>
+                                            <TranslateTransform X="{Binding IconOffset}">
+                                                <TranslateTransform.Transitions>
+                                                    <Transitions>
+                                                        <DoubleTransition Property="X" Duration="0:0:0.14" />
+                                                    </Transitions>
+                                                </TranslateTransform.Transitions>
+                                            </TranslateTransform>
+                                        </Grid.RenderTransform>
                                         <Image Name="SolverIcon"
                                                Source="{Binding Icon}"
                                                Stretch="Uniform"

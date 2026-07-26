@@ -242,6 +242,36 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnSolverPointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is Control { DataContext: SolverItemViewModel item } && ViewModel is { } vm)
+        {
+            vm.SetSolverHovered(item, true);
+        }
+    }
+
+    private void OnSolverPointerExited(object? sender, PointerEventArgs e)
+    {
+        if (sender is Control { DataContext: SolverItemViewModel item } && ViewModel is { } vm)
+        {
+            // 子按钮和功能区会在同一次指针移动中依次收到 PointerExited。
+            // 延后清除按钮悬停，让功能区退出先完成，避免默认选中项先收回再弹出的闪动。
+            Dispatcher.UIThread.Post(
+                () => vm.SetSolverHovered(item, false),
+                DispatcherPriority.Background);
+        }
+    }
+
+    private void OnSolverAreaPointerEntered(object? sender, PointerEventArgs e)
+    {
+        ViewModel?.SetSolverAreaHovered(true);
+    }
+
+    private void OnSolverAreaPointerExited(object? sender, PointerEventArgs e)
+    {
+        ViewModel?.SetSolverAreaHovered(false);
+    }
+
     private async void PlaySolverClickAnimation(Control control)
     {
         int generation = _solverAnimationGenerations.TryGetValue(control, out int current)
