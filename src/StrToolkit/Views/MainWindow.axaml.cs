@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
@@ -8,6 +11,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using StrToolkit.Services;
 using StrToolkit.ViewModels;
 
@@ -15,6 +19,9 @@ namespace StrToolkit.Views;
 
 public partial class MainWindow : Window
 {
+    public const int DefaultWindowWidth = 760;
+    public const int DefaultWindowHeight = 400;
+
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
 
     /// <summary>执行处理并写回剪贴板后触发（App 层负责 nextStep 之外的联动）。</summary>
@@ -32,6 +39,20 @@ public partial class MainWindow : Window
     /// </summary>
     private int _clipboardLoadGeneration;
     private int _enterAnimationGeneration;
+    private int _selectionUpdateGeneration;
+    private int _selectionAnimationGeneration;
+    private bool _selectionIndicatorShown;
+    private MainWindowViewModel? _observedViewModel;
+    private readonly Dictionary<Control, int> _solverAnimationGenerations = new();
+    private SolverItemViewModel? _hoveredSolver;
+
+    private const double SolverNormalWidth = 50;
+    private const double SolverNormalHeight = 40;
+    private const double SolverHoverScale = 1.2;
+    private const double SolverHoverWidth = SolverNormalWidth * SolverHoverScale;
+    private const double SolverHoverHeight = SolverNormalHeight * SolverHoverScale;
+    private const double SolverItemSpacing = 4;
+    private const double SolverItemStride = SolverNormalHeight + SolverItemSpacing;
 
     /// <summary>唤醒显示前调用：短时间内忽略激活过程中的瞬时失焦，避免窗口闪烁。</summary>
     public void MarkWake() => _lastWake = DateTime.UtcNow;
@@ -67,7 +88,159 @@ public partial class MainWindow : Window
             Log("Activated");
             LoadClipboardFromWake();
         };
+        DataContextChanged += OnDataContextChanged;
         AddHandler(KeyDownEvent, OnPreviewKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+    }
+
+    private void OnDataContextChanged(object? sender, EventArgs e)
+    {
+        if (_observedViewModel is not null)
+        {
+            _observedViewModel.Solvers.CollectionChanged -= OnSolversCollectionChanged;
+            _observedViewModel.VisibleSolvers.CollectionChanged -= OnVisibleSolversCollectionChanged;
+            foreach (var item in _observedViewModel.Solvers)
+            {
+                item.PropertyChanged -= OnSolverPropertyChanged;
+            }
+        }
+
+        _observedViewModel = ViewModel;
+        if (_observedViewModel is null)
+        {
+            SolverSelectionPill.Opacity = 0;
+            _selectionIndicatorShown = false;
+            return;
+        }
+
+        _observedViewModel.Solvers.CollectionChanged += OnSolversCollectionChanged;
+        _observedViewModel.VisibleSolvers.CollectionChanged += OnVisibleSolversCollectionChanged;
+        foreach (var item in _observedViewModel.Solvers)
+        {
+            item.PropertyChanged += OnSolverPropertyChanged;
+        }
+        ScheduleSelectionIndicatorUpdate();
+    }
+
+    private void OnSolversCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (e.OldItems is not null)
+        {
+            foreach (SolverItemViewModel item in e.OldItems)
+            {
+                item.PropertyChanged -= OnSolverPropertyChanged;
+            }
+        }
+        if (e.NewItems is not null)
+        {
+            foreach (SolverItemViewModel item in e.NewItems)
+            {
+                item.PropertyChanged -= OnSolverPropertyChanged;
+                item.PropertyChanged += OnSolverPropertyChanged;
+            }
+        }
+        ScheduleSelectionIndicatorUpdate();
+    }
+
+    private void OnVisibleSolversCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        ScheduleSelectionIndicatorUpdate();
+
+    private void OnSolverPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SolverItemViewModel.IsSelected) or nameof(SolverItemViewModel.IsVisible))
+        {
+            ScheduleSelectionIndicatorUpdate();
+        }
+    }
+
+    /// <summary>
+    /// 同一次选择会先取消旧项再选中新项；延迟到当前 UI 消息末尾统一更新，
+    /// 避免胶囊先消失再出现，也让 nextStep 的自动跳转自然接管最终位置。
+    /// </summary>
+    private void ScheduleSelectionIndicatorUpdate()
+    {
+        int generation = Interlocked.Increment(ref _selectionUpdateGeneration);
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (generation == Volatile.Read(ref _selectionUpdateGeneration))
+            {
+                UpdateSelectionIndicator();
+            }
+        }, DispatcherPriority.Background);
+    }
+
+    private async void UpdateSelectionIndicator()
+    {
+        if (ViewModel is not { } vm ||
+            SolverSelectionPill.RenderTransform is not TranslateTransform selectionTranslate)
+        {
+            return;
+        }
+
+        var selected = vm.VisibleSolvers.FirstOrDefault(item => item.IsSelected);
+        int index = selected is null ? -1 : vm.VisibleSolvers.IndexOf(selected);
+        int generation = Interlocked.Increment(ref _selectionAnimationGeneration);
+        if (index < 0)
+        {
+            SolverSelectionPill.Opacity = 0;
+            _selectionIndicatorShown = false;
+            return;
+        }
+
+        double targetY = index * SolverItemStride;
+        int hoveredIndex = _hoveredSolver is null ? -1 : vm.VisibleSolvers.IndexOf(_hoveredSolver);
+        if (hoveredIndex >= 0 && hoveredIndex < index)
+        {
+            // Hover 项实际参与 StackPanel 布局；它增高后，下面的按钮保持 4px 间距整体下移。
+            targetY += SolverHoverHeight - SolverNormalHeight;
+        }
+        bool selectedIsHovered = ReferenceEquals(selected, _hoveredSolver);
+        SolverSelectionPill.Width = selectedIsHovered ? SolverHoverWidth : SolverNormalWidth;
+        SolverSelectionPill.Height = selectedIsHovered ? SolverHoverHeight : SolverNormalHeight;
+        if (!_selectionIndicatorShown)
+        {
+            selectionTranslate.Y = targetY;
+            SolverSelectionPill.Opacity = 1;
+            _selectionIndicatorShown = true;
+            return;
+        }
+
+        double startY = selectionTranslate.Y;
+        double distance = targetY - startY;
+        if (Math.Abs(distance) < 0.5)
+        {
+            selectionTranslate.Y = targetY;
+            SolverSelectionPill.Opacity = 1;
+            return;
+        }
+
+        // 先越过目标最多 2px，再轻轻回落；总时长约 210ms。
+        double overshoot = Math.Sign(distance) * Math.Min(2, Math.Abs(distance) * 0.06);
+        double overshootY = targetY + overshoot;
+        const int travelFrames = 10;
+        for (int frame = 1; frame <= travelFrames; frame++)
+        {
+            if (generation != Volatile.Read(ref _selectionAnimationGeneration))
+            {
+                return;
+            }
+            double t = frame / (double)travelFrames;
+            double eased = 1 - Math.Pow(1 - t, 3);
+            selectionTranslate.Y = startY + (overshootY - startY) * eased;
+            await Task.Delay(16);
+        }
+
+        const int settleFrames = 3;
+        for (int frame = 1; frame <= settleFrames; frame++)
+        {
+            if (generation != Volatile.Read(ref _selectionAnimationGeneration))
+            {
+                return;
+            }
+            double t = frame / (double)settleFrames;
+            selectionTranslate.Y = overshootY + (targetY - overshootY) * t;
+            await Task.Delay(16);
+        }
+        selectionTranslate.Y = targetY;
     }
 
     public void HideAndReset()
@@ -231,10 +404,139 @@ public partial class MainWindow : Window
             {
                 return;
             }
+            PlaySolverClickAnimation((Control)sender);
             vm.SelectSolver(item);
             ExecuteSelected();
         }
     }
+
+    private void OnSolverIconEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is not Control control)
+        {
+            return;
+        }
+        _hoveredSolver = control.DataContext as SolverItemViewModel;
+        ApplySolverHoverLayout(control, true);
+        ScheduleSelectionIndicatorUpdate();
+    }
+
+    private void OnSolverIconExited(object? sender, PointerEventArgs e)
+    {
+        if (sender is not Control control)
+        {
+            return;
+        }
+        if (ReferenceEquals(_hoveredSolver, control.DataContext))
+        {
+            _hoveredSolver = null;
+        }
+        ApplySolverHoverLayout(control, false);
+        ScheduleSelectionIndicatorUpdate();
+    }
+
+    private static void ApplySolverHoverLayout(Control control, bool hovered)
+    {
+        control.Width = hovered ? SolverHoverWidth : SolverNormalWidth;
+        control.Height = hovered ? SolverHoverHeight : SolverNormalHeight;
+        if (control is Border border)
+        {
+            double radius = hovered ? 26 : 20;
+            border.CornerRadius = new CornerRadius(0, radius, radius, 0);
+        }
+        if (FindSolverPart<Grid>(control, "SolverIconMotion")?.RenderTransform is ScaleTransform iconScale)
+        {
+            double value = hovered ? SolverHoverScale : 1;
+            iconScale.ScaleX = value;
+            iconScale.ScaleY = value;
+        }
+    }
+
+    private async void PlaySolverClickAnimation(Control control)
+    {
+        int generation = _solverAnimationGenerations.TryGetValue(control, out int current)
+            ? current + 1
+            : 1;
+        _solverAnimationGenerations[control] = generation;
+        _ = PlaySolverSheenAsync(control, generation);
+
+        var (scale, translate) = GetSolverTransforms(control);
+        if (scale is null || translate is null)
+        {
+            return;
+        }
+
+        // 按下：短促收缩并下沉，先给出明确的物理反馈。
+        scale.ScaleX = 0.93;
+        scale.ScaleY = 0.93;
+        translate.Y = 1;
+
+        await Task.Delay(70);
+        if (!IsCurrentSolverAnimation(control, generation))
+        {
+            return;
+        }
+
+        // 松开：略微超过原尺寸，再稳定下来。
+        scale.ScaleX = 1.05;
+        scale.ScaleY = 1.05;
+        translate.Y = 0;
+
+        await Task.Delay(85);
+        if (!IsCurrentSolverAnimation(control, generation))
+        {
+            return;
+        }
+
+        scale.ScaleX = 1;
+        scale.ScaleY = 1;
+        ApplySolverHoverLayout(control, control.IsPointerOver);
+    }
+
+    private async Task PlaySolverSheenAsync(Control control, int generation)
+    {
+        var sheen = FindSolverPart<Border>(control, "SolverClickSheen");
+        if (sheen?.RenderTransform is not TransformGroup group ||
+            group.Children.OfType<TranslateTransform>().FirstOrDefault() is not { } translate)
+        {
+            return;
+        }
+
+        const int frames = 13;
+        for (int frame = 0; frame <= frames; frame++)
+        {
+            if (!IsCurrentSolverAnimation(control, generation))
+            {
+                sheen.Opacity = 0;
+                return;
+            }
+            double t = frame / (double)frames;
+            double eased = 1 - Math.Pow(1 - t, 3);
+            translate.X = -24 + 82 * eased;
+            sheen.Opacity = t < 0.24
+                ? 0.38 * (t / 0.24)
+                : 0.38 * ((1 - t) / 0.76);
+            await Task.Delay(16);
+        }
+        sheen.Opacity = 0;
+    }
+
+    private bool IsCurrentSolverAnimation(Control control, int generation) =>
+        _solverAnimationGenerations.TryGetValue(control, out int current) && current == generation;
+
+    private static (ScaleTransform? Scale, TranslateTransform? Translate) GetSolverTransforms(Control control)
+    {
+        if (control.RenderTransform is not TransformGroup group)
+        {
+            return (null, null);
+        }
+        return (
+            group.Children.OfType<ScaleTransform>().FirstOrDefault(),
+            group.Children.OfType<TranslateTransform>().FirstOrDefault());
+    }
+
+    private static T? FindSolverPart<T>(Control root, string name) where T : Control =>
+        root.GetVisualDescendants().OfType<T>().FirstOrDefault(control => control.Name == name);
 
     private void CaptureHotkey(KeyEventArgs e, MainWindowViewModel vm)
     {

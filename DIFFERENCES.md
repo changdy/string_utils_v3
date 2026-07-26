@@ -8,7 +8,7 @@
 |----|-------------|-------------|------|
 | 唤醒位置 | 窗口出现在鼠标光标附近 (`cursor.x-180, cursor.y-100`) | Windows、macOS、Linux/X11 与 Electron 一致；Linux/Wayland 居中偏上 | Avalonia 没有统一的全局光标 API，当前分别调用 Win32、CoreGraphics 和 Xlib。Wayland 出于安全限制不提供通用的全局坐标读取能力 |
 | 窗口透明/圆角 | `opacity: 0.9` + CSS 圆角 + 无阴影 | `Opacity=0.9` + Border 圆角 | 视觉近似；Linux 某些合成器下透明度表现可能不同 |
-| 选中图标动画 | CSS 渐变背景流动动画 + 图标 hover 翻转 | 静态渐变背景 | 视觉简化，不影响功能 |
+| 选中图标动画 | CSS 无限渐变 + 图标 hover 360° 翻转 | Hover 整体按 1.2 倍参与布局放大（相邻按钮保持间距并随之移动）、点击压缩回弹、单次高光、选中轮廓滑动 | 改为短促且有状态含义的动效；动画结束后保持静止 |
 | Enter 按钮气泡动画 | bubbly-button CSS radial-gradient 粒子动画 | Avalonia 原生绘制的上下气泡散开 + 按钮缩放回弹 | 粒子轨迹不逐像素复刻，时长和整体观感接近 |
 
 Enter 按钮粒子参数调整记录：

@@ -184,8 +184,8 @@ public partial class App : Application
                 {
                     var bounds = screen.WorkingArea;
                     target = new PixelPoint(
-                        Math.Clamp(target.X, bounds.X, Math.Max(bounds.X, bounds.X + bounds.Width - 740)),
-                        Math.Clamp(target.Y, bounds.Y, Math.Max(bounds.Y, bounds.Y + bounds.Height - 400)));
+                        Math.Clamp(target.X, bounds.X, Math.Max(bounds.X, bounds.X + bounds.Width - MainWindow.DefaultWindowWidth)),
+                        Math.Clamp(target.Y, bounds.Y, Math.Max(bounds.Y, bounds.Y + bounds.Height - MainWindow.DefaultWindowHeight)));
                 }
                 _mainWindow.Position = target;
             }
@@ -197,8 +197,8 @@ public partial class App : Application
                 {
                     var bounds = screen.WorkingArea;
                     _mainWindow.Position = new PixelPoint(
-                        bounds.X + (bounds.Width - 740) / 2,
-                        bounds.Y + (bounds.Height - 400) / 3);
+                        bounds.X + (bounds.Width - MainWindow.DefaultWindowWidth) / 2,
+                        bounds.Y + (bounds.Height - MainWindow.DefaultWindowHeight) / 3);
                 }
             }
         }
@@ -288,8 +288,8 @@ public partial class App : Application
             {
                 var bounds = screen.WorkingArea;
                 _mainWindow.Position = new PixelPoint(
-                    bounds.X + (bounds.Width - 740) / 2,
-                    bounds.Y + (bounds.Height - 400) / 2);
+                    bounds.X + (bounds.Width - MainWindow.DefaultWindowWidth) / 2,
+                    bounds.Y + (bounds.Height - MainWindow.DefaultWindowHeight) / 2);
             }
             _mainWindow.MarkWake();
             _mainWindow.Show();
