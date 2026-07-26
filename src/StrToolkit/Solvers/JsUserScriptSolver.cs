@@ -9,8 +9,8 @@ using Jint.Runtime;
 namespace StrToolkit.Solvers;
 
 /// <summary>
-/// 通过 Jint 加载 Electron 版格式的 JS 用户脚本（ES Module，导出 solver 对象）。
-/// 注意：仅支持纯 JS 逻辑，不支持 Node API / require / CryptoJS 等注入（见 DIFFERENCES.md）。
+/// 通过 Jint 加载 JS 用户脚本包（ES Module，导出 solver 对象）。
+/// 依赖应由脚本包以相对 ESM 导入或在开发阶段打包，不提供 Node API / require。
 /// </summary>
 public sealed class JsUserScriptSolver : ISolver
 {
@@ -22,20 +22,34 @@ public sealed class JsUserScriptSolver : ISolver
 
     public string Name { get; }
     public string Describe { get; }
-    public string? NextStep { get; }
+    public string? NextStep
+    {
+        get
+        {
+            lock (_engine)
+            {
+                var nextStep = _solver.Get("nextStep");
+                return nextStep.IsString() && nextStep.AsString().Length > 0
+                    ? nextStep.AsString()
+                    : null;
+            }
+        }
+    }
     public bool IsUserScript => true;
     public string? IconBasePath { get; }
 
-    private JsUserScriptSolver(Engine engine, JsValue solver, string scriptPath)
+    private JsUserScriptSolver(
+        Engine engine,
+        JsValue solver,
+        UserScriptPackage package)
     {
         _engine = engine;
         _cancellationConstraint = engine.Constraints.Find<CancellationConstraint>()
             ?? throw new InvalidOperationException("Jint 取消约束初始化失败");
         _solver = solver;
-        Name = solver.Get("name").IsString() ? solver.Get("name").AsString() : Path.GetFileNameWithoutExtension(scriptPath);
+        Name = solver.Get("name").IsString() ? solver.Get("name").AsString() : package.Id;
         Describe = solver.Get("describe").IsString() ? solver.Get("describe").AsString() : Name;
-        NextStep = solver.Get("nextStep").IsString() ? solver.Get("nextStep").AsString() : null;
-        IconBasePath = Path.Combine(Path.GetDirectoryName(scriptPath) ?? "", Path.GetFileNameWithoutExtension(scriptPath));
+        IconBasePath = package.IconBasePath;
         var check = solver.Get("check");
         _checkFn = check.IsUndefined() ? null : check;
         var transfer = solver.Get("transfer");
@@ -43,25 +57,52 @@ public sealed class JsUserScriptSolver : ISolver
     }
 
     public static JsUserScriptSolver Load(string scriptPath)
+        => Load(UserScriptPackage.FromLegacyFile(scriptPath));
+
+    public static JsUserScriptSolver Load(UserScriptPackage package)
     {
-        var scriptDir = Path.GetDirectoryName(Path.GetFullPath(scriptPath)) ?? ".";
         // CancellationToken.None 不会让 Jint 创建取消约束，因此初始化阶段使用可取消令牌。
         using var initializationCancellation = new CancellationTokenSource();
         var engine = new Engine(options =>
         {
-            options.EnableModules(scriptDir);
+            options.EnableModules(package.ModuleRoot);
             options.TimeoutInterval(TimeSpan.FromSeconds(10));
             options.LimitRecursion(256);
+            options.LimitMemory(64_000_000);
             // 引擎会被复用；每次调用前通过 CancellationConstraint.Reset 切换请求令牌。
             options.CancellationToken(initializationCancellation.Token);
         });
-        var ns = engine.Modules.Import("./" + Path.GetFileName(scriptPath));
+        var environmentApi = new UserScriptEnvironmentApi();
+        engine.SetValue(
+            "__strToolkitGetEnvironmentVariable",
+            new Func<string, string>(environmentApi.Get));
+        engine.Execute("""
+            (() => {
+                const getEnvironmentVariable = __strToolkitGetEnvironmentVariable;
+                delete globalThis.__strToolkitGetEnvironmentVariable;
+                const api = Object.freeze({
+                    env: Object.freeze({
+                        get: name => getEnvironmentVariable(String(name))
+                    })
+                });
+                Object.defineProperty(globalThis, "strToolkit", {
+                    value: api,
+                    writable: false,
+                    configurable: false,
+                    enumerable: true
+                });
+            })();
+            """);
+        string entrySpecifier = "./" + Path
+            .GetRelativePath(package.ModuleRoot, package.EntryPath)
+            .Replace('\\', '/');
+        var ns = engine.Modules.Import(entrySpecifier);
         var solver = ns.Get("solver");
         if (solver.IsUndefined() || solver.IsNull())
         {
-            throw new InvalidOperationException($"脚本 {scriptPath} 未导出 solver 对象");
+            throw new InvalidOperationException($"脚本 {package.EntryPath} 未导出 solver 对象");
         }
-        return new JsUserScriptSolver(engine, solver, scriptPath);
+        return new JsUserScriptSolver(engine, solver, package);
     }
 
     public int Check(string logs, string[] arr, bool jsonFlag) =>

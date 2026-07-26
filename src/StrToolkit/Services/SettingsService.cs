@@ -46,6 +46,18 @@ public sealed class SettingsService
     {
         Directory.CreateDirectory(UserDataDir);
         Directory.CreateDirectory(UserScriptDir);
+        try
+        {
+            BundledUserScriptInstaller.InstallMissing(
+                Path.Combine(AppContext.BaseDirectory, "bundled-user-scripts"),
+                UserScriptDir,
+                UserDataDir);
+        }
+        catch (Exception e)
+        {
+            // 默认脚本安装失败不应阻断应用启动；用户仍可从托盘打开目录后手动安装。
+            Console.Error.WriteLine($"安装随应用分发的用户脚本失败: {e.Message}");
+        }
         _filePath = Path.Combine(UserDataDir, "settings.json");
         Settings = Load();
     }

@@ -114,10 +114,14 @@ SharpHook KeyPressed (匹配 accelerator)
 ### 5.2 用户脚本（Jint）
 
 - 目录：`%APPDATA%/str-toolkit-avalonia/user-scripts`（Linux/macOS 为对应 ApplicationData 路径）
-- 启动时扫描 `*.js`，用 Jint `Engine.Modules.Import` 按 ES Module 加载，读取导出的 `solver`
+- 推荐格式：一级子目录脚本包，固定使用 `index.js` 入口和可选 `icon.svg` / `icon.png`
+- 兼容格式：根目录 `*.js` 及同名 `.svg` / `.png`
+- 每个包以自身目录作为 Jint 模块根目录，可相对导入包内 `.js` / `.mjs`
 - `check` / `transfer` 通过 Jint Invoke 调用，与内置处理器同台打分
-- 图标：与脚本同名的 `.svg` / `.png`
-- 限制见 DIFFERENCES.md（无 Node API / require / CryptoJS 注入）
+- 随应用分发的 `bundled-user-scripts` 包首次出现时复制到用户目录；不覆盖同名用户包，
+  删除后也不自动恢复
+- 客户端只注入通用的 `strToolkit.env.get(name)`；业务和第三方库均由用户脚本实现或打包
+- 限制见 DIFFERENCES.md（无 Node API / require / npm 运行时解析）
 
 ### 5.3 JSON 预览
 
