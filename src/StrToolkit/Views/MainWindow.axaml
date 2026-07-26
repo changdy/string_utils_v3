@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:StrToolkit.ViewModels"
+        xmlns:controls="using:StrToolkit.Views.Controls"
         x:Class="StrToolkit.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="文本小军刀"
@@ -27,6 +28,9 @@
                     CornerRadius="7,0,7,7"
                     Background="Transparent">
                 <Grid>
+                    <!-- 全尺寸透明绘制层，避免粒子受到按钮自身布局边界裁剪。 -->
+                    <controls:BubbleBurstLayer Name="EnterBubbleLayer" />
+
                     <!--
                       文本区不需要外层 ScrollViewer：TextBox 模板自带滚动。
                       用 Hidden 隐藏滚动条，仍可用滚轮滚动长文本。
@@ -110,7 +114,19 @@
                                 BorderBrush="#00CED1"
                                 BorderThickness="1"
                                 CornerRadius="4"
+                                RenderTransformOrigin="50%,50%"
                                 Click="OnEnterButtonClick">
+                            <Button.RenderTransform>
+                                <ScaleTransform ScaleX="1"
+                                                ScaleY="1">
+                                    <ScaleTransform.Transitions>
+                                        <Transitions>
+                                            <DoubleTransition Property="ScaleX" Duration="0:0:0.1" />
+                                            <DoubleTransition Property="ScaleY" Duration="0:0:0.1" />
+                                        </Transitions>
+                                    </ScaleTransform.Transitions>
+                                </ScaleTransform>
+                            </Button.RenderTransform>
                             <Button.Styles>
                                 <Style Selector="Button:pointerover /template/ Border#EnterButtonSurface">
                                     <Setter Property="Background" Value="White" />
