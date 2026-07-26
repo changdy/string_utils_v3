@@ -59,11 +59,37 @@ public static class VsCodeDiffService
     {
         try
         {
+            bool isWindowsBatchFile = OperatingSystem.IsWindows()
+                && (command.EndsWith(".cmd", StringComparison.OrdinalIgnoreCase)
+                    || command.EndsWith(".bat", StringComparison.OrdinalIgnoreCase));
+            string? batchFile = isWindowsBatchFile ? ResolveWindowsBatchFile(command) : null;
+            if (isWindowsBatchFile && batchFile is null)
+            {
+                return false;
+            }
+
             var psi = new ProcessStartInfo
             {
-                FileName = command,
-                UseShellExecute = OperatingSystem.IsWindows()
+                FileName = isWindowsBatchFile
+                    ? Environment.GetEnvironmentVariable("COMSPEC") ?? "cmd.exe"
+                    : command,
+                UseShellExecute = false,
+                CreateNoWindow = OperatingSystem.IsWindows(),
+                WindowStyle = OperatingSystem.IsWindows()
+                    ? ProcessWindowStyle.Hidden
+                    : ProcessWindowStyle.Normal
             };
+
+            if (isWindowsBatchFile)
+            {
+                // Batch files must run through cmd.exe. CreateNoWindow prevents the
+                // command prompt window from flashing before VS Code opens.
+                psi.ArgumentList.Add("/d");
+                psi.ArgumentList.Add("/c");
+                psi.ArgumentList.Add("call");
+                psi.ArgumentList.Add(batchFile!);
+            }
+
             psi.ArgumentList.Add("--diff");
             psi.ArgumentList.Add(file1);
             psi.ArgumentList.Add(file2);
@@ -74,5 +100,25 @@ public static class VsCodeDiffService
         {
             return false;
         }
+    }
+
+    private static string? ResolveWindowsBatchFile(string command)
+    {
+        if (File.Exists(command))
+        {
+            return Path.GetFullPath(command);
+        }
+
+        foreach (string directory in (Environment.GetEnvironmentVariable("PATH") ?? "")
+                     .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string candidate = Path.Combine(directory.Trim('"'), command);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 }
