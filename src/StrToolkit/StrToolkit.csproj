@@ -18,11 +18,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
-    <Content Include="..\..\user-scripts\**\*"
-             Link="bundled-user-scripts\%(RecursiveDir)%(Filename)%(Extension)"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest" />
+    <AvaloniaResource Include="Assets\**"
+                      Exclude="Assets\JsRuntime\**" />
+    <EmbeddedResource Include="Assets\JsRuntime\crypto-js.min.js"
+                      LogicalName="StrToolkit.Assets.JsRuntime.crypto-js.min.js" />
+    <EmbeddedResource Include="Assets\JsRuntime\licenses\crypto-js.LICENSE.txt"
+                      LogicalName="StrToolkit.Assets.JsRuntime.licenses.crypto-js.LICENSE.txt" />
   </ItemGroup>
 
   <ItemGroup>

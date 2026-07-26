@@ -10,7 +10,7 @@ namespace StrToolkit.Solvers;
 
 /// <summary>
 /// 通过 Jint 加载 JS 用户脚本包（ES Module，导出 solver 对象）。
-/// 依赖应由脚本包以相对 ESM 导入或在开发阶段打包，不提供 Node API / require。
+/// 包内代码可使用相对 ESM 导入；应用内置库通过白名单 require 提供。
 /// </summary>
 public sealed class JsUserScriptSolver : ISolver
 {
@@ -93,6 +93,7 @@ public sealed class JsUserScriptSolver : ISolver
                 });
             })();
             """);
+        UserScriptLibraryRegistry.Install(engine);
         string entrySpecifier = "./" + Path
             .GetRelativePath(package.ModuleRoot, package.EntryPath)
             .Replace('\\', '/');

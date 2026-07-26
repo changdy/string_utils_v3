@@ -28,8 +28,7 @@ Visual Studio/F5 或普通 Debug build 会在首次发现资源缺失时自动�
 - macOS/Linux：系统 ApplicationData 下的 `str-toolkit-avalonia/user-scripts`
 
 可通过托盘菜单「打开用户脚本目录」直接打开。新增或修改脚本后需要重启应用。
-随应用分发的脚本包会在首次遇到该包时复制到此目录；已有同名目录永远不会被覆盖，
-用户删除过的包也不会在后续启动时被自动恢复。
+用户脚本完全由用户自行放入该目录；仓库中的示例不会随应用构建、发布或自动安装。
 
 ### 推荐的脚本包格式
 
@@ -73,7 +72,7 @@ export const solver = {
 
 ### 客户端 API
 
-客户端只提供通用环境变量读取，不内置用户脚本的业务或加解密算法：
+客户端提供通用环境变量读取，并内置部分通用 JavaScript 库：
 
 ```js
 const key = strToolkit.env.get("jsutils_key");
@@ -83,6 +82,15 @@ const path = strToolkit.env.get("PATH");
 `env.get(name)` 可以读取当前 StrToolkit 进程可见的任意环境变量；不存在时返回空字符串。
 因此用户脚本应视为受信任代码，不应直接安装来源不明的脚本包。
 
+当前可以直接使用白名单模块 `crypto-js`，无需为用户脚本安装 npm 依赖：
+
+```js
+const CryptoJS = require("crypto-js");
+const digest = CryptoJS.SHA256("hello").toString();
+```
+
+这里的 `require` 只用于获取应用内置库，不是 Node.js 的模块加载器。请求其他模块会直接报错。
+
 ### 管理第三方依赖
 
 Jint 支持包目录内的相对 ES Module 导入：
@@ -91,8 +99,9 @@ Jint 支持包目录内的相对 ES Module 导入：
 import helper from "./lib/helper.mjs";
 ```
 
-Jint 不是 Node.js，不提供 `require`、`process`、`Buffer`、Node 内置模块或 `node_modules`
-包名解析。纯 ESM 依赖可以随包放入 `lib/`；npm/CommonJS 依赖建议在开发阶段打包为单个 ESM：
+Jint 不是 Node.js，不提供通用的 `require`、`process`、`Buffer`、Node 内置模块或
+`node_modules` 包名解析。白名单内置库可以通过上述 `require` 使用；其他纯 ESM 依赖可以
+随包放入 `lib/`，npm/CommonJS 依赖建议在开发阶段打包为单个 ESM：
 
 ```bash
 npm install
@@ -104,10 +113,16 @@ npx esbuild src/index.js \
   --outfile=dist/index.js
 ```
 
-仓库中的 `user-scripts-src/decrypt` 是完整示例：依赖和版本由 `package-lock.json` 固定，
-`npm run build` 生成可直接分发的 `user-scripts/decrypt/index.js`。最终脚本包已经包含所需 JS
-和许可证，目标机器运行时不需要 Node.js、npm 或联网。构建/发布 StrToolkit 时，
-`user-scripts` 下的包会进入 `bundled-user-scripts`，再由应用按上述规则安装到用户目录。
+仓库中的 `user-scripts-src/decrypt` 是完整示例：它直接使用应用内置的 `crypto-js`，
+无需声明或打包该运行依赖，也不需要 `package.json`、`npm install` 或 esbuild。
+这个目录只作为源码和实现参考，不参与应用打包。实际使用时，由用户把 `index.js`、
+`rsa.js` 等运行文件复制到自己的用户脚本目录；目标机器不需要 Node.js、npm 或联网。
+
+decrypt 示例的测试也没有第三方依赖，可以直接运行：
+
+```bash
+node --test user-scripts-src/decrypt/test/decrypt.test.mjs
+```
 
 ## JSON 预览资源
 

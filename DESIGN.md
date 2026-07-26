@@ -118,10 +118,10 @@ SharpHook KeyPressed (匹配 accelerator)
 - 兼容格式：根目录 `*.js` 及同名 `.svg` / `.png`
 - 每个包以自身目录作为 Jint 模块根目录，可相对导入包内 `.js` / `.mjs`
 - `check` / `transfer` 通过 Jint Invoke 调用，与内置处理器同台打分
-- 随应用分发的 `bundled-user-scripts` 包首次出现时复制到用户目录；不覆盖同名用户包，
-  删除后也不自动恢复
-- 客户端只注入通用的 `strToolkit.env.get(name)`；业务和第三方库均由用户脚本实现或打包
-- 限制见 DIFFERENCES.md（无 Node API / require / npm 运行时解析）
+- 用户脚本由用户自行放入 ApplicationData 下的用户脚本目录；仓库示例不参与构建或自动安装
+- 客户端注入 `strToolkit.env.get(name)`，并通过白名单 `require` 提供内置通用库
+- 仓库的 `user-scripts-src` 只作为源码和实现参考，不参与应用打包
+- 限制见 DIFFERENCES.md（无 Node API / 通用 require / npm 运行时解析）
 
 ### 5.3 JSON 预览
 

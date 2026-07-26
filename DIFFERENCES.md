@@ -50,13 +50,15 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electr
 | ES Module 相对导入 | 支持 | ✅ 支持（限当前脚本包目录） |
 
 即：**只依赖纯 JS 逻辑（字符串/正则/JSON 处理）的用户脚本可以原样运行**；
-依赖 Node API 的脚本需要改造成浏览器兼容纯 JS，并在开发阶段打包。应用只通过
-`strToolkit` 全局对象提供通用环境变量读取：
+依赖 Node API 的脚本需要改造成浏览器兼容纯 JS。应用通过 `strToolkit` 全局对象
+提供通用环境变量读取，并通过白名单 `require` 提供内置库：
 
 - `strToolkit.env.get(name)`：读取当前 StrToolkit 进程可见的任意环境变量
+- `require("crypto-js")`：获取应用内置 CryptoJS；不提供通用 Node 模块加载
 
-客户端不实现具体用户脚本功能。随仓库提供的 decrypt 脚本包把固定版本 CryptoJS 打进 ESM，
-并在 JS 内使用原生 BigInt 实现 RSA PKCS#1 v1.5；运行时不依赖 npm 或 Node.js。
+客户端不实现具体用户脚本业务。随仓库提供的 decrypt 脚本包直接使用宿主内置 CryptoJS，
+并在 JS 内使用原生 BigInt 实现 RSA PKCS#1 v1.5。该目录只作为实现参考，不参与
+.NET 构建或应用发布；用户自行复制脚本文件后，开发和运行均不依赖 npm 或 Node.js 包。
 
 其他差异：
 
