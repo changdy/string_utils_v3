@@ -90,7 +90,7 @@ dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:Publis
 四个平台安装包：
 
 ```xml
-<Version>4.0.3</Version>
+<Version>4.0.4</Version>
 ```
 
 版本标签已存在但指向其他提交时，发布会直接失败，避免覆盖历史版本。

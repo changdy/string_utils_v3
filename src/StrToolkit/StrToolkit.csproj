@@ -10,7 +10,7 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>StrToolkit</AssemblyName>
     <RootNamespace>StrToolkit</RootNamespace>
-    <Version>4.0.3</Version>
+    <Version>4.0.4</Version>
     <WebAssetsDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../.web-assets'))</WebAssetsDirectory>
     <PrepareWebAssetsOnBuild Condition="'$(PrepareWebAssetsOnBuild)' == '' and '$(Configuration)' == 'Debug'">true</PrepareWebAssetsOnBuild>
     <PrepareWebAssetsOnBuild Condition="'$(PrepareWebAssetsOnBuild)' == ''">false</PrepareWebAssetsOnBuild>
