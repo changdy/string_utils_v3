@@ -14,6 +14,12 @@ namespace StrToolkit.Services;
 /// </summary>
 public sealed class HotkeyService : IDisposable
 {
+    // KeyReleased 偶尔会被操作系统或底层钩子漏掉。超过该时间后把仍为按下的状态
+    // 视为过期，避免一次漏报导致快捷键在本次进程生命周期内永久失效。
+    private const long HotkeyLatchRecoveryMilliseconds = 3_000;
+    private const int HookRestartDelayMilliseconds = 1_000;
+    private const int HookRestartMaxDelayMilliseconds = 30_000;
+
     private readonly SimpleGlobalHook _hook;
     private readonly TaskCompletionSource<bool> _startup =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -21,6 +27,9 @@ public sealed class HotkeyService : IDisposable
     private HotkeyBinding? _binding;
     private int _startRequested;
     private int _hotkeyDown;
+    private int _suppressMainKeyUp;
+    private long _lastHotkeyPressedAt;
+    private int _hookEnableGeneration;
     private int _disposed;
     private volatile bool _isAvailable;
     private string? _lastError;
@@ -84,32 +93,57 @@ public sealed class HotkeyService : IDisposable
         }
 
         Volatile.Write(ref _binding, binding);
-        Interlocked.Exchange(ref _hotkeyDown, 0);
+        ResetHotkeyState();
         return true;
     }
 
     public void Unregister()
     {
         Volatile.Write(ref _binding, null);
-        Interlocked.Exchange(ref _hotkeyDown, 0);
+        ResetHotkeyState();
     }
 
     private async Task RunHookAsync()
     {
-        try
+        int restartDelay = HookRestartDelayMilliseconds;
+        while (Volatile.Read(ref _disposed) == 0)
         {
-            await _hook.RunAsync().ConfigureAwait(false);
+            int generationBeforeRun = Volatile.Read(ref _hookEnableGeneration);
+            try
+            {
+                await _hook.RunAsync().ConfigureAwait(false);
+                if (Volatile.Read(ref _disposed) != 0)
+                {
+                    return;
+                }
+
+                SetUnavailable("全局快捷键监听已意外停止，正在尝试恢复。");
+            }
+            catch (Exception e)
+            {
+                if (Volatile.Read(ref _disposed) != 0)
+                {
+                    return;
+                }
+
+                string message = GetPlatformFailureHint($"全局快捷键监听失败: {e.Message}");
+                SetUnavailable(message);
+                _startup.TrySetResult(false);
+                AppLog.Error(message, e);
+            }
+
+            ResetHotkeyState();
+            // 曾成功启动后再意外退出时快速恢复；连续启动失败则指数退避，避免刷日志。
+            if (Volatile.Read(ref _hookEnableGeneration) != generationBeforeRun)
+            {
+                restartDelay = HookRestartDelayMilliseconds;
+            }
+            await Task.Delay(restartDelay).ConfigureAwait(false);
+            restartDelay = Math.Min(restartDelay * 2, HookRestartMaxDelayMilliseconds);
             if (Volatile.Read(ref _disposed) == 0)
             {
-                SetUnavailable("全局快捷键监听已意外停止。");
+                AppLog.Info("正在重新启动全局快捷键监听。");
             }
-        }
-        catch (Exception e)
-        {
-            string message = GetPlatformFailureHint($"全局快捷键监听启动失败: {e.Message}");
-            SetUnavailable(message);
-            _startup.TrySetResult(false);
-            AppLog.Error(message, e);
         }
     }
 
@@ -117,6 +151,8 @@ public sealed class HotkeyService : IDisposable
     {
         _lastError = null;
         _isAvailable = true;
+        Interlocked.Increment(ref _hookEnableGeneration);
+        ResetHotkeyState();
         _startup.TrySetResult(true);
         AvailabilityChanged?.Invoke(true, null);
     }
@@ -124,7 +160,7 @@ public sealed class HotkeyService : IDisposable
     private void OnHookDisabled(object? sender, HookEventArgs e)
     {
         _isAvailable = false;
-        Interlocked.Exchange(ref _hotkeyDown, 0);
+        ResetHotkeyState();
         if (Volatile.Read(ref _disposed) == 0)
         {
             SetUnavailable("全局快捷键监听已停止。");
@@ -139,19 +175,36 @@ public sealed class HotkeyService : IDisposable
     private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)
     {
         var binding = Volatile.Read(ref _binding);
-        if (!_isAvailable || binding is null || e.Data.KeyCode != binding.Key ||
-            !HasExactModifiers(e.RawEvent.Mask, binding.Modifiers))
+        if (!_isAvailable || binding is null || e.Data.KeyCode != binding.Key)
         {
+            return;
+        }
+
+        if (!HasExactModifiers(e.RawEvent.Mask, binding.Modifiers))
+        {
+            // 同一主键以普通按键形式再次按下，说明上一轮物理按键已经结束，即使它的
+            // KeyUp 曾被漏报也不应继续保留闩锁或抑制下一次普通 KeyUp。
+            ResetHotkeyState();
             return;
         }
 
         // 系统按键自动重复会产生连续 KeyPressed；一次按住只唤醒一次。
-        if (Interlocked.Exchange(ref _hotkeyDown, 1) != 0)
+        // 若 KeyReleased 被漏掉，则允许过期的闩锁自恢复，避免后续永远无法触发。
+        long now = Environment.TickCount64;
+        if (Interlocked.CompareExchange(ref _hotkeyDown, 1, 0) != 0)
         {
-            SuppressIfSupported(e);
-            return;
+            long previous = Interlocked.Read(ref _lastHotkeyPressedAt);
+            if (now - previous < HotkeyLatchRecoveryMilliseconds)
+            {
+                SuppressIfSupported(e);
+                return;
+            }
+
+            AppLog.Warn("检测到快捷键释放事件丢失，已自动恢复按键状态。");
         }
 
+        Interlocked.Exchange(ref _lastHotkeyPressedAt, now);
+        Interlocked.Exchange(ref _suppressMainKeyUp, 1);
         SuppressIfSupported(e);
         HotkeyPressed?.Invoke();
     }
@@ -159,13 +212,49 @@ public sealed class HotkeyService : IDisposable
     private void OnKeyReleased(object? sender, KeyboardHookEventArgs e)
     {
         var binding = Volatile.Read(ref _binding);
-        if (binding is null || e.Data.KeyCode != binding.Key)
+        if (binding is null)
         {
             return;
         }
 
+        if (e.Data.KeyCode == binding.Key)
+        {
+            Interlocked.Exchange(ref _hotkeyDown, 0);
+            Interlocked.Exchange(ref _lastHotkeyPressedAt, 0);
+            // 普通输入同名按键时没有对应的快捷键 KeyDown，不应吞掉它的 KeyUp。
+            if (Interlocked.Exchange(ref _suppressMainKeyUp, 0) != 0)
+            {
+                SuppressIfSupported(e);
+            }
+            return;
+        }
+
+        // 主键 KeyUp 可能在窗口激活切换时丢失；用户松开任意一个所需修饰键时
+        // 同样解除按下闩锁。保留 _suppressMainKeyUp，若稍后收到主键 KeyUp 仍应抑制。
+        if (IsRequiredModifierKey(binding, e.Data.KeyCode))
+        {
+            Interlocked.Exchange(ref _hotkeyDown, 0);
+            Interlocked.Exchange(ref _lastHotkeyPressedAt, 0);
+        }
+    }
+
+    private void ResetHotkeyState()
+    {
         Interlocked.Exchange(ref _hotkeyDown, 0);
-        SuppressIfSupported(e);
+        Interlocked.Exchange(ref _suppressMainKeyUp, 0);
+        Interlocked.Exchange(ref _lastHotkeyPressedAt, 0);
+    }
+
+    private static bool IsRequiredModifierKey(HotkeyBinding binding, KeyCode key)
+    {
+        return (key is KeyCode.VcLeftControl or KeyCode.VcRightControl &&
+                binding.Modifiers.Contains(ModifierMask.Ctrl)) ||
+               (key is KeyCode.VcLeftAlt or KeyCode.VcRightAlt &&
+                binding.Modifiers.Contains(ModifierMask.Alt)) ||
+               (key is KeyCode.VcLeftShift or KeyCode.VcRightShift &&
+                binding.Modifiers.Contains(ModifierMask.Shift)) ||
+               (key is KeyCode.VcLeftMeta or KeyCode.VcRightMeta &&
+                binding.Modifiers.Contains(ModifierMask.Meta));
     }
 
     private static void SuppressIfSupported(HookEventArgs e)
