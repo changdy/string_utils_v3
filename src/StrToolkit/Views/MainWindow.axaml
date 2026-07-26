@@ -1,0 +1,153 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:StrToolkit.ViewModels"
+        x:Class="StrToolkit.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="文本小军刀"
+        Width="740" Height="400"
+        CanResize="False"
+        SystemDecorations="None"
+        Opacity="0.9"
+        Topmost="True"
+        ShowInTaskbar="False"
+        TransparencyLevelHint="Transparent"
+        Background="Transparent"
+        WindowStartupLocation="Manual">
+
+    <Grid ColumnDefinitions="*,50">
+        <!--
+          左侧文本区：背景与描边拆成两层。
+          Avalonia 的 Border 会把 Background 画在 BorderThickness 内侧，
+          实心区域会比右侧工具栏矮 2×border 像素；底层铺满背景后外轮廓与右侧对齐。
+        -->
+        <Grid Grid.Column="0">
+            <Border Background="AliceBlue" CornerRadius="7,0,7,7" />
+            <Border BorderBrush="#4D0366D6"
+                    BorderThickness="2"
+                    CornerRadius="7,0,7,7"
+                    Background="Transparent">
+                <Grid>
+                    <!--
+                      文本区不需要外层 ScrollViewer：TextBox 模板自带滚动。
+                      用 Hidden 隐藏滚动条，仍可用滚轮滚动长文本。
+                    -->
+                    <TextBox Name="BodyTextBox"
+                             Text="{Binding BodyText, Mode=TwoWay}"
+                             IsReadOnly="True"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             FontFamily="JetBrains Mono,Consolas,Menlo,monospace"
+                             FontSize="13"
+                             Padding="5"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Hidden">
+                        <TextBox.Styles>
+                            <Style Selector="TextBox /template/ Border#PART_BorderElement">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                            </Style>
+                            <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                            </Style>
+                            <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                            </Style>
+                            <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderThickness" Value="0" />
+                            </Style>
+                            <!-- 模板内滚动条彻底不显示 -->
+                            <Style Selector="TextBox /template/ ScrollViewer#PART_ScrollViewer">
+                                <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+                                <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
+                            </Style>
+                            <Style Selector="TextBox /template/ ScrollBar">
+                                <Setter Property="Width" Value="0" />
+                                <Setter Property="Height" Value="0" />
+                                <Setter Property="Opacity" Value="0" />
+                                <Setter Property="IsHitTestVisible" Value="False" />
+                            </Style>
+                        </TextBox.Styles>
+                    </TextBox>
+
+                    <!-- Enter 按钮（右下角悬浮） -->
+                    <Button Name="EnterButton"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Bottom"
+                            Margin="0,0,20,20"
+                            Padding="10,4"
+                            FontSize="20"
+                            Cursor="Hand"
+                            Foreground="White"
+                            Background="#00CED1"
+                            CornerRadius="4"
+                            Click="OnEnterButtonClick">
+                        <Button.Styles>
+                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="White" />
+                                <Setter Property="Foreground" Value="#00CED1" />
+                            </Style>
+                        </Button.Styles>
+                        Enter
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 右侧功能图标栏：只绑定 VisibleSolvers，避免隐藏项占位拉大间距 -->
+        <ScrollViewer Grid.Column="1"
+                      Padding="0"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Hidden">
+            <ItemsControl ItemsSource="{Binding VisibleSolvers}" Margin="0" Padding="0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Orientation="Vertical" Spacing="4" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:SolverItemViewModel">
+                        <Border Width="50" Height="40"
+                                CornerRadius="0,20,20,0"
+                                Cursor="Hand"
+                                Classes.selected="{Binding IsSelected}"
+                                PointerPressed="OnSolverIconPressed"
+                                ToolTip.Tip="{Binding Describe}">
+                            <Border.Styles>
+                                <Style Selector="Border">
+                                    <Setter Property="Background" Value="#B0E0E6" />
+                                </Style>
+                                <Style Selector="Border.selected">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                                                <GradientStop Color="#87E9A4" Offset="0" />
+                                                <GradientStop Color="#ADC5FF" Offset="0.4" />
+                                                <GradientStop Color="#00FFFF" Offset="0.7" />
+                                                <GradientStop Color="#ADFF2F" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Border.Styles>
+                            <!-- 固定槽位居中 + Uniform：非正方形 SVG（如 json-diff 22x28）视觉大小更一致 -->
+                            <Grid Width="36" Height="36"
+                                  Margin="2,2,0,0"
+                                  HorizontalAlignment="Left"
+                                  VerticalAlignment="Center">
+                                <Image Source="{Binding Icon}"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</Window>
