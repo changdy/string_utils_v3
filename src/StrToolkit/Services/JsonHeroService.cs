@@ -52,7 +52,7 @@ public sealed class JsonHeroService
     /// <summary>Directory copied beside the application during build/publish.</summary>
     public static string FrontendDir => Path.Combine(AppContext.BaseDirectory, "jsonhero-frontend");
 
-    public async Task StartAsync()
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (IsRunning)
         {
@@ -80,7 +80,7 @@ public sealed class JsonHeroService
                 ConfigureRoutes(app);
                 ConfigureFrontend(app, _frontendDirectory);
 
-                await app.StartAsync();
+                await app.StartAsync(cancellationToken).ConfigureAwait(false);
                 _app = app;
                 Port = port;
                 BaseUrl = $"http://127.0.0.1:{port}";
@@ -91,11 +91,19 @@ public sealed class JsonHeroService
                 Console.WriteLine($"[jsonhero] Server running at {BaseUrl} ({frontendStatus})");
                 return;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (app is not null)
+                {
+                    await app.DisposeAsync().ConfigureAwait(false);
+                }
+                throw;
+            }
             catch (Exception e) when (port < PortEnd)
             {
                 if (app is not null)
                 {
-                    await app.DisposeAsync();
+                    await app.DisposeAsync().ConfigureAwait(false);
                 }
                 Console.Error.WriteLine($"[jsonhero] Port {port} unavailable: {e.Message}");
             }
@@ -128,7 +136,7 @@ public sealed class JsonHeroService
         return await GetFrontendBaseUrlAsync() + redirect;
     }
 
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         var app = _app;
         _app = null;
@@ -140,12 +148,11 @@ public sealed class JsonHeroService
 
         try
         {
-            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(3));
-            await app.StopAsync(timeout.Token);
+            await app.StopAsync(cancellationToken).ConfigureAwait(false);
         }
         finally
         {
-            await app.DisposeAsync();
+            await app.DisposeAsync().ConfigureAwait(false);
         }
     }
 

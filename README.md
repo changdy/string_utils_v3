@@ -84,10 +84,13 @@ dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:Publis
 - macOS Intel：`StrToolkit-osx-x64.tar.gz`
 - Linux x64：`StrToolkit-linux-x64.tar.gz`
 
-可在 GitHub Actions 页面手动运行 `Package` 生成 Artifacts。推送 `v*` 格式的版本标签时，
-工作流还会自动创建对应的 GitHub Release、生成 Release Notes，并上传全部四个平台安装包：
+可在 GitHub Actions 页面手动运行 `Package` 生成 Artifacts，但手动运行不会发布 Release。
+推送到 `main` 时，工作流会比较 `src/StrToolkit/StrToolkit.csproj` 中的 `<Version>` 与上一提交；
+只有版本号发生变化时才会自动打包、创建对应的 `vX.Y.Z` 标签和 GitHub Release，并上传全部
+四个平台安装包：
 
-```bash
-git tag v4.0.0
-git push origin v4.0.0
+```xml
+<Version>4.0.3</Version>
 ```
+
+版本标签已存在但指向其他提交时，发布会直接失败，避免覆盖历史版本。

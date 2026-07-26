@@ -32,53 +32,20 @@
                     <!-- 全尺寸透明绘制层，避免粒子受到按钮自身布局边界裁剪。 -->
                     <controls:BubbleBurstLayer Name="EnterBubbleLayer" />
 
-                    <!--
-                      文本区不需要外层 ScrollViewer：TextBox 模板自带滚动。
-                      用 Hidden 隐藏滚动条，仍可用滚轮滚动长文本。
-                    -->
-                    <TextBox Name="BodyTextBox"
-                             Text="{Binding BodyText, Mode=TwoWay}"
-                             IsReadOnly="True"
-                             AcceptsReturn="True"
-                             TextWrapping="Wrap"
-                             Background="Transparent"
-                             BorderThickness="0"
-                             FontFamily="Maple Mono NF CN,Maple Mono,Sarasa Mono SC,LXGW WenKai Mono,JetBrains Mono,Cascadia Mono,Consolas,Menlo,monospace"
-                             FontSize="16"
-                             LineHeight="20"
-                             Padding="5"
-                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                             ScrollViewer.VerticalScrollBarVisibility="Hidden">
-                        <TextBox.Styles>
-                            <Style Selector="TextBox /template/ Border#PART_BorderElement">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="BorderThickness" Value="0" />
-                            </Style>
-                            <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="BorderThickness" Value="0" />
-                            </Style>
-                            <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="BorderThickness" Value="0" />
-                            </Style>
-                            <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
-                                <Setter Property="Background" Value="Transparent" />
-                                <Setter Property="BorderThickness" Value="0" />
-                            </Style>
-                            <!-- 模板内滚动条彻底不显示 -->
-                            <Style Selector="TextBox /template/ ScrollViewer#PART_ScrollViewer">
-                                <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
-                                <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
-                            </Style>
-                            <Style Selector="TextBox /template/ ScrollBar">
-                                <Setter Property="Width" Value="0" />
-                                <Setter Property="Height" Value="0" />
-                                <Setter Property="Opacity" Value="0" />
-                                <Setter Property="IsHitTestVisible" Value="False" />
-                            </Style>
-                        </TextBox.Styles>
-                    </TextBox>
+                    <!-- 纯展示文本：不可编辑、不可选中，但保留滚轮浏览长内容。 -->
+                    <ScrollViewer Name="BodyScrollViewer"
+                                  Focusable="False"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Hidden">
+                        <TextBlock Text="{Binding BodyText}"
+                                   IsHitTestVisible="False"
+                                   TextWrapping="Wrap"
+                                   Background="Transparent"
+                                   FontFamily="Maple Mono NF CN,Maple Mono,Sarasa Mono SC,LXGW WenKai Mono,JetBrains Mono,Cascadia Mono,Consolas,Menlo,monospace"
+                                   FontSize="16"
+                                   LineHeight="20"
+                                   Padding="5" />
+                    </ScrollViewer>
 
                     <!-- Enter 按钮（右下角悬浮）：复刻 Electron 的边框、阴影和 hover 图标展开。 -->
                     <Grid HorizontalAlignment="Right"

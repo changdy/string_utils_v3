@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -26,7 +27,7 @@ public sealed class JsonCrackServer
 
     public static string AssetsDir => Path.Combine(AppContext.BaseDirectory, "json-crack");
 
-    public async Task StartAsync()
+    public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         if (!Directory.Exists(AssetsDir))
         {
@@ -37,12 +38,13 @@ public sealed class JsonCrackServer
 
         for (int port = PortStart; port <= PortEnd; port++)
         {
+            WebApplication? app = null;
             try
             {
                 var builder = WebApplication.CreateBuilder();
                 builder.Logging.ClearProviders();
                 builder.WebHost.ConfigureKestrel(o => o.Listen(System.Net.IPAddress.Loopback, port));
-                var app = builder.Build();
+                app = builder.Build();
 
                 var fileProvider = new PhysicalFileProvider(AssetsDir);
                 app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = fileProvider });
@@ -58,16 +60,28 @@ public sealed class JsonCrackServer
                     return _cache.TryGetValue(uuid, out var entry) ? entry.Json : "";
                 });
 
-                await app.StartAsync();
+                await app.StartAsync(cancellationToken).ConfigureAwait(false);
                 _app = app;
                 Port = port;
                 IsRunning = true;
                 Console.WriteLine($"[json-crack] Server running at http://127.0.0.1:{port}/");
                 return;
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (app is not null)
+                {
+                    await app.DisposeAsync().ConfigureAwait(false);
+                }
+                throw;
+            }
             catch (IOException)
             {
                 // 端口被占用，尝试下一个
+                if (app is not null)
+                {
+                    await app.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
         Console.Error.WriteLine($"[json-crack] No available port in range {PortStart}-{PortEnd}");
@@ -93,11 +107,23 @@ public sealed class JsonCrackServer
         }
     }
 
-    public async Task StopAsync()
+    public async Task StopAsync(CancellationToken cancellationToken = default)
     {
-        if (_app is not null)
+        var app = _app;
+        _app = null;
+        IsRunning = false;
+        if (app is null)
         {
-            await _app.StopAsync();
+            return;
+        }
+
+        try
+        {
+            await app.StopAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await app.DisposeAsync().ConfigureAwait(false);
         }
     }
 }
