@@ -49,7 +49,6 @@ public partial class MainWindow : Window
     {
         ViewModel?.CancelAutoSelect();
         int generation = Interlocked.Increment(ref _clipboardLoadGeneration);
-        Log($"LoadClipboardFromWake gen={generation}");
         _ = ReadClipboardAndSelectAsync(generation);
     }
 
@@ -61,18 +60,12 @@ public partial class MainWindow : Window
         {
             if ((DateTime.UtcNow - _lastWake).TotalMilliseconds < WakeGraceMs)
             {
-                Log("Deactivated (唤醒宽限期内，忽略)");
                 return;
             }
-            Log("Deactivated");
             Dispatcher.UIThread.Post(HideAndReset);
         };
         // 兜底：从其它应用切回本窗时也刷新；热键主路径在 ShowWindowAtCursor 里主动调用
-        Activated += (_, _) =>
-        {
-            Log("Activated");
-            LoadClipboardFromWake();
-        };
+        Activated += (_, _) => LoadClipboardFromWake();
         AddHandler(KeyDownEvent, OnPreviewKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
@@ -90,34 +83,24 @@ public partial class MainWindow : Window
         Hide();
     }
 
-    private static void Log(string msg)
-    {
-        try { System.IO.File.AppendAllText(@"c:\project\string_utils_v2\clip.log", $"{DateTime.Now:HH:mm:ss.fff} {msg}\n"); } catch { }
-    }
-
     private async Task ReadClipboardAndSelectAsync(int generation)
     {
-        Log($"ReadClipboard enter gen={generation}, vm={(ViewModel is not null)}, hotkeyMode={ViewModel?.ChangeHotKeyMode}");
         if (ViewModel is not { } vm || vm.ChangeHotKeyMode)
         {
             return;
         }
         try
         {
-            Log($"Clipboard null? {Clipboard is null}");
             var text = Clipboard is null ? null : await Clipboard.GetTextAsync();
             // 唤醒被取消、窗口已隐藏、或又一次更新的读取已经开始 → 丢弃本次结果
             if (generation != Volatile.Read(ref _clipboardLoadGeneration))
             {
-                Log($"ReadClipboard stale gen={generation}, current={_clipboardLoadGeneration}");
                 return;
             }
             if (!IsVisible || vm.ChangeHotKeyMode)
             {
-                Log("ReadClipboard skip: not visible or hotkey mode");
                 return;
             }
-            Log($"clipboard text: {(text is null ? "<null>" : $"len={text.Length} [{(text.Length > 50 ? text[..50] : text)}]")}");
             if (!string.IsNullOrEmpty(text))
             {
                 Task autoSelectTask = vm.AutoSelectAsync(text);
@@ -127,7 +110,6 @@ public partial class MainWindow : Window
         }
         catch (Exception e)
         {
-            Log($"读取剪贴板失败: {e}");
             AppLog.Error("读取剪贴板失败", e);
         }
     }

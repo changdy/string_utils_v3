@@ -10,6 +10,8 @@
 | 窗口透明/圆角 | `opacity: 0.9` + CSS 圆角 + 无阴影 | `Opacity=0.9` + Border 圆角 | 视觉近似；Linux 某些合成器下透明度表现可能不同 |
 | 图标交互动效 | CSS 无限渐变 + 图标 hover 360° 翻转 | Hover 时仅内部图标以透明度循环淡入淡出；点击保留压缩回弹与单次高光 | Hover 使用低干扰的呼吸灯提示，按钮尺寸和菜单布局保持稳定 |
 | Enter 按钮气泡动画 | bubbly-button CSS radial-gradient 粒子动画 | Avalonia 原生绘制的上下气泡散开 + 按钮缩放回弹 | 粒子轨迹不逐像素复刻，时长和整体观感接近 |
+| 文本区 | `contenteditable div` | `TextBox` | 行为基本一致；富文本粘贴会被转为纯文本 |
+| 字体 | 内嵌 JetBrainsMono woff2 | 按候选列表使用系统等宽字体 | 依次尝试 Maple Mono、Sarasa Mono、LXGW WenKai Mono、JetBrains Mono 等字体，最后回退到 `monospace` |
 
 右侧功能图标透明度实现说明：
 
@@ -24,8 +26,6 @@ Enter 按钮粒子参数调整记录：
 - 当前参数：原始粒子大小按比例映射到半径 `1-3` 逻辑像素；水平、垂直和弧线移动均为初始实现的 `1/3`，实际水平移动 `0-4.33`、垂直移动 `8-16`、弧线偏移 `0.4-0.67` 逻辑像素。
 - 曾试用尺寸 `1/12`、垂直移动 `1/9` 的参数，但粒子进入亚像素范围后几乎不可见，因此已恢复到上述当前参数。
 - 粒子的初始分布位置、数量（上 9 下 7）和 `560ms` 动画时长保持不变。
-| 文本区 | `contenteditable div` | `TextBox` | 行为基本一致；富文本粘贴会被转纯文本（更符合工具语义） |
-| 字体 | 内嵌 JetBrainsMono woff2 | 优先使用系统已装 JetBrains Mono，回退 monospace | 如需完全一致可后续内嵌 ttf |
 
 ## 2. 全局快捷键
 
@@ -39,12 +39,13 @@ Enter 按钮粒子参数调整记录：
 
 ## 3. 用户脚本（最主要差异）
 
-Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electron 版注入的以下能力不可用：
+Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**。与 Electron 版相比，脚本能力的
+兼容边界如下：
 
 | 注入项 | Electron 版 | Avalonia 版 |
 |--------|-------------|-------------|
-| `require` | 指向应用 node_modules，可加载任意已装依赖 | ❌ 不支持 |
-| `CryptoJS` | crypto-js | ❌ 不注入；用户脚本可自行打包纯 JS 依赖 |
+| `require` | 指向应用 node_modules，可加载任意已装依赖 | ✅ 仅支持白名单内置库：`lodash`、`dayjs`、`crypto-js` |
+| `CryptoJS` | crypto-js | ✅ 作为全局对象注入，也可通过 `require("crypto-js")` 获取 |
 | `nodeCrypto` | Node `crypto` | ❌ 不支持；用户脚本需使用纯 JS 实现 |
 | `forge` | node-forge | ❌ 不注入；可自行打包，但需评估 Jint 性能和内存 |
 | ES Module 相对导入 | 支持 | ✅ 支持（限当前脚本包目录） |
@@ -101,7 +102,9 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electr
 
 - 配置由 electron-store 换成 JSON 文件：`<ApplicationData>/str-toolkit-avalonia/settings.json`，
   键名有调整（accelerator / skipList / autoLaunch），不读取旧 Electron 配置。
-- electron-log 的文件日志暂未对应实现，当前输出到 stdout/stderr。可后续接入 Serilog。
+- electron-log 的文件日志暂未对应实现，应用不会写持久化日志文件。诊断信息主要通过
+  `AppLog` 输出到 Debug/Trace 和 `Console.Error`，部分服务直接输出到控制台；如需持久化
+  日志，可后续接入 Serilog。
 
 ## 8. 开机自启
 

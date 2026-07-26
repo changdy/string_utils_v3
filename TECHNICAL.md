@@ -266,9 +266,9 @@ JSONCrack 的静态产物，不包含源码、`node_modules` 或包管理文件�
 
 可在 GitHub Actions 页面手动运行 `Package` 生成 Artifacts，但手动运行不会发布 Release。
 
-推送到 `main` 时，工作流会比较 `src/StrToolkit/StrToolkit.csproj` 中的 `<Version>` 与上一
-提交；仅当版本号发生变化时，才会自动打包、创建对应的 `vX.Y.Z` 标签和 GitHub Release，
-并上传全部四个平台的软件包：
+当 `src/StrToolkit/StrToolkit.csproj` 的变更推送到 `master` 时，工作流会比较其中的
+`<Version>` 与上一提交。版本号发生变化，或当前版本对应的标签尚不存在时，会自动打包、
+创建对应的 `vX.Y.Z` 标签和 GitHub Release，并上传全部四个平台的软件包：
 
 ```xml
 <Version>4.0.7</Version>

@@ -7,7 +7,8 @@
 
 核心功能保持对齐：
 
-- 托盘常驻 + 全局快捷键（默认 `Ctrl+Alt+D`）唤醒无边框浮窗
+- 托盘常驻 + 全局快捷键（Windows/Linux 默认 `Ctrl+Alt+D`，macOS 默认
+  `Command+Option+D`）唤醒无边框浮窗
 - 唤醒后自动读取剪贴板，内置处理器按 `check()` 匹配分数自动选中
 - `Enter` / 点击按钮执行 `transfer()`，结果写回编辑区并复制到剪贴板
 - 处理器 `nextStep` 链式流转（如 提取 → 去重 → 拼接）
@@ -51,7 +52,7 @@ UI 不要求像素级复刻，整体布局与配色相似即可。
 ## 4. 项目结构
 
 ```text
-avalonia_ui/
+avalonia_str/
   DESIGN.md                  本设计方案
   DIFFERENCES.md             与 Electron 版的行为差异记录
   StrToolkit.sln
@@ -100,7 +101,7 @@ avalonia_ui/
 ```
 SharpHook KeyPressed (匹配 accelerator)
   → Dispatcher.UIThread → MainWindow.Show/Activate
-  → Window.Activated → Clipboard.GetTextAsync()
+  → MainWindow.LoadClipboardFromWake() → Clipboard.GetTextAsync()
   → MainWindowViewModel.AutoSelect(text)
       jsonFlag = ([...] 或 {...})
       对每个可见 solver 调 Check(str, strArr, jsonFlag)，取最高分选中
@@ -151,11 +152,12 @@ dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:Publis
 `dotnet publish` 会调用 `scripts/prepare-web-assets.mjs`：直接下载 JSON Hero latest Release 静态
 产物，并在系统临时目录构建 JSONCrack latest Release 源码。发布目录只复制 JSON Hero 静态
 目录和 JSONCrack 的 `apps/www/out`，不包含源码、`node_modules` 或包管理文件。
-后续可在 GitHub Actions 中按 Electron 版的多平台矩阵配置自动发布。
+仓库已通过 `.github/workflows/package.yml` 配置 Windows x86、Linux x64、macOS x64 和
+macOS arm64 的多平台打包，并在 `master` 分支版本变化时创建 GitHub Release。
 
-## 7. 测试情况
+## 7. 验证方式
 
-- `dotnet build` 通过（0 warning / 0 error）
-- 8 个内置处理器核心逻辑已用样例输入逐一验证（id-join 三态切换、排序去重数值/字符串、
-  命名三风格轮转、SQL UPDATE/INSERT 提取、JSON 大整数抽取、MyBatis 注解与日志还原）
-- GUI / 托盘 / 全局快捷键需在真实桌面环境人工验证
+- 使用 `dotnet build StrToolkit.sln` 验证 .NET 项目能够编译
+- 使用 `node --test user-scripts-src/decrypt/test/decrypt.test.mjs` 验证 decrypt 用户脚本
+- 当前仓库没有独立的 .NET 测试项目；内置处理器行为以及 GUI、托盘、全局快捷键仍需通过
+  样例输入和真实桌面环境验证
