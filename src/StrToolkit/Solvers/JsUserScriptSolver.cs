@@ -1,7 +1,10 @@
 using System;
 using System.IO;
+using System.Threading;
 using Jint;
+using Jint.Constraints;
 using Jint.Native;
+using Jint.Runtime;
 
 namespace StrToolkit.Solvers;
 
@@ -12,6 +15,7 @@ namespace StrToolkit.Solvers;
 public sealed class JsUserScriptSolver : ISolver
 {
     private readonly Engine _engine;
+    private readonly CancellationConstraint _cancellationConstraint;
     private readonly JsValue _solver;
     private readonly JsValue? _checkFn;
     private readonly JsValue? _transferFn;
@@ -25,6 +29,8 @@ public sealed class JsUserScriptSolver : ISolver
     private JsUserScriptSolver(Engine engine, JsValue solver, string scriptPath)
     {
         _engine = engine;
+        _cancellationConstraint = engine.Constraints.Find<CancellationConstraint>()
+            ?? throw new InvalidOperationException("Jint 取消约束初始化失败");
         _solver = solver;
         Name = solver.Get("name").IsString() ? solver.Get("name").AsString() : Path.GetFileNameWithoutExtension(scriptPath);
         Describe = solver.Get("describe").IsString() ? solver.Get("describe").AsString() : Name;
@@ -39,11 +45,15 @@ public sealed class JsUserScriptSolver : ISolver
     public static JsUserScriptSolver Load(string scriptPath)
     {
         var scriptDir = Path.GetDirectoryName(Path.GetFullPath(scriptPath)) ?? ".";
+        // CancellationToken.None 不会让 Jint 创建取消约束，因此初始化阶段使用可取消令牌。
+        using var initializationCancellation = new CancellationTokenSource();
         var engine = new Engine(options =>
         {
             options.EnableModules(scriptDir);
             options.TimeoutInterval(TimeSpan.FromSeconds(10));
             options.LimitRecursion(256);
+            // 引擎会被复用；每次调用前通过 CancellationConstraint.Reset 切换请求令牌。
+            options.CancellationToken(initializationCancellation.Token);
         });
         var ns = engine.Modules.Import("./" + Path.GetFileName(scriptPath));
         var solver = ns.Get("solver");
@@ -54,7 +64,14 @@ public sealed class JsUserScriptSolver : ISolver
         return new JsUserScriptSolver(engine, solver, scriptPath);
     }
 
-    public int Check(string logs, string[] arr, bool jsonFlag)
+    public int Check(string logs, string[] arr, bool jsonFlag) =>
+        Check(logs, arr, jsonFlag, CancellationToken.None);
+
+    public int Check(
+        string logs,
+        string[] arr,
+        bool jsonFlag,
+        CancellationToken cancellationToken)
     {
         if (_checkFn is null)
         {
@@ -64,9 +81,20 @@ public sealed class JsUserScriptSolver : ISolver
         {
             lock (_engine)
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                _cancellationConstraint.Reset(cancellationToken);
                 var result = _engine.Invoke(_checkFn, _solver, new object[] { logs, arr, jsonFlag });
+                cancellationToken.ThrowIfCancellationRequested();
                 return result.IsNumber() ? (int)result.AsNumber() : 0;
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (ExecutionCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
         }
         catch (Exception e)
         {
@@ -86,6 +114,8 @@ public sealed class JsUserScriptSolver : ISolver
         {
             lock (_engine)
             {
+                // 取消过的 check 不能污染后续 transfer。
+                _cancellationConstraint.Reset(CancellationToken.None);
                 var result = _engine.Invoke(_transferFn, _solver, new object[] { logs, arr, jsonFlag });
                 return result.IsString() ? result.AsString() : result.ToString();
             }
