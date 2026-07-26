@@ -52,9 +52,9 @@ jobs:
           - label: Windows x86
             os: windows-2022
             rid: win-x86
-            artifact: StrToolkit-win-x86
-            archive: StrToolkit-win-x86.zip
-            format: zip
+            artifact: StrToolkit-Setup-win-x86
+            archive: StrToolkit-Setup-win-x86.exe
+            format: inno
           - label: macOS ARM64
             os: macos-15
             rid: osx-arm64
@@ -128,15 +128,37 @@ jobs:
             }
           }
 
-      - name: Create ZIP archive
-        if: matrix.format == 'zip'
+      - name: Create Windows installer
+        if: matrix.format == 'inno'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-          Compress-Archive `
-            -Path "publish/${{ matrix.rid }}/*" `
-            -DestinationPath "artifacts/${{ matrix.archive }}" `
-            -CompressionLevel Optimal
+          $isccCandidates = @(
+            (Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6/ISCC.exe"),
+            (Join-Path $env:ProgramFiles "Inno Setup 6/ISCC.exe")
+          )
+          $iscc = $isccCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if (!$iscc) {
+            throw "Inno Setup compiler was not found on the runner"
+          }
+
+          [xml]$project = Get-Content "src/StrToolkit/StrToolkit.csproj"
+          $versionNode = Select-Xml -Xml $project -XPath "/Project/PropertyGroup/Version" |
+            Select-Object -First 1
+          $version = $versionNode.Node.InnerText
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Unable to read the application version from StrToolkit.csproj"
+          }
+
+          $publishDir = (Resolve-Path "publish/${{ matrix.rid }}").Path
+          $outputDir = (New-Item -ItemType Directory -Path artifacts -Force).FullName
+          & $iscc `
+            "/DMyAppVersion=$version" `
+            "/DPublishDir=$publishDir" `
+            "/DOutputDir=$outputDir" `
+            "installer/windows/StrToolkit.iss"
+          if ($LASTEXITCODE -ne 0) {
+            throw "Inno Setup failed with exit code $LASTEXITCODE"
+          }
 
       - name: Create tar.gz archive
         if: matrix.format == 'tar'
@@ -151,3 +173,50 @@ jobs:
           name: ${{ matrix.artifact }}
           path: artifacts/${{ matrix.archive }}
           if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: StrToolkit-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify release packages
+        shell: bash
+        run: |
+          required=(
+            StrToolkit-Setup-win-x86.exe
+            StrToolkit-osx-arm64.tar.gz
+            StrToolkit-osx-x64.tar.gz
+            StrToolkit-linux-x64.tar.gz
+          )
+          for archive in "${required[@]}"; do
+            test -f "release-assets/$archive" || {
+              echo "Missing release package: $archive" >&2
+              exit 1
+            }
+          done
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/* \
+              --verify-tag \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
