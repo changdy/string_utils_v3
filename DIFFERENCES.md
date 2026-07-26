@@ -54,7 +54,14 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electr
 提供通用环境变量读取，并通过白名单 `require` 提供内置库：
 
 - `strToolkit.env.get(name)`：读取当前 StrToolkit 进程可见的任意环境变量
+- `require("lodash")`：获取应用内置 Lodash
+- `require("dayjs")`：获取应用内置 Day.js 核心
 - `require("crypto-js")`：获取应用内置 CryptoJS；不提供通用 Node 模块加载
+- `atob` / `btoa`：浏览器风格 Latin-1 Base64 转换，不直接支持 Unicode 文本
+
+内置库在每个用户脚本引擎中无条件加载。Jint 不提供浏览器事件循环，因此 Lodash 的
+`debounce` / `throttle` / `delay` / `defer` 等定时器 API 不受支持；Day.js 插件、语言包
+和完整浏览器时区行为也不在兼容范围内。`check` / `transfer` 仍为同步调用。
 
 客户端不实现具体用户脚本业务。随仓库提供的 decrypt 脚本包直接使用宿主内置 CryptoJS，
 并在 JS 内使用原生 BigInt 实现 RSA PKCS#1 v1.5。该目录只作为实现参考，不参与
