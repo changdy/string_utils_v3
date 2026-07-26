@@ -116,9 +116,11 @@ SharpHook KeyPressed (匹配 accelerator)
 
 ### 5.3 JSON 预览
 
-- jsoncrack：Kestrel 静态站点 + `/api/json-str?uuid=`（10 分钟过期缓存），
-  静态资源为 Electron 项目 `npm run build:jsoncrack` 的产物，需复制到应用目录 `json-crack/`
-- jsonhero：独立 React/Vite 前端位于 `../json-hero-frontend`；Kestrel 实现创建、读取、改名、
+- jsoncrack：Kestrel 静态站点 + `/api/json-str?uuid=`（10 分钟过期缓存）。发布前读取
+  `AykutSarac/jsoncrack.com` 最新 GitHub Release，临时构建源码，只复制 `apps/www/out` 到
+  应用目录 `json-crack/`
+- jsonhero：使用 `changdy/json-hero-frontend` 最新 GitHub Release 中的预构建静态文件；
+  Kestrel 实现创建、读取、改名、
   删除、URL 获取及预览 API。文档只保存在当前进程内存中，默认 24 小时过期、最多 500 条，
   应用退出后全部清空
 - 「JSON 预览」执行时：优先打开 jsonhero，同时打开 jsoncrack（与 Electron 版一致）
@@ -136,8 +138,9 @@ dotnet publish src/StrToolkit -c Release -r osx-x64   --self-contained -p:Publis
 dotnet publish src/StrToolkit -c Release -r osx-arm64 --self-contained -p:PublishSingleFile=true
 ```
 
-发布前先在 `../json-hero-frontend` 执行 `npm ci && npm run build`；Avalonia 项目会自动把
-`dist/` 复制到发布目录的 `jsonhero-frontend/`。JsonCrack 的 `json-crack/` 资源仍需单独复制。
+`dotnet publish` 会调用 `scripts/prepare-web-assets.mjs`：直接下载 JSON Hero latest Release 静态
+产物，并在系统临时目录构建 JSONCrack latest Release 源码。发布目录只复制 JSON Hero 静态
+目录和 JSONCrack 的 `apps/www/out`，不包含源码、`node_modules` 或包管理文件。
 后续可在 GitHub Actions 中按 Electron 版的多平台矩阵配置自动发布。
 
 ## 7. 测试情况

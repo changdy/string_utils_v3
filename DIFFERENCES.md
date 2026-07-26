@@ -61,9 +61,11 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**，因此 Electr
 
 ## 4. JSON 预览
 
-- jsoncrack：由 Kestrel 原生托管，行为与 Electron 版一致（需将 `json-crack` 构建产物复制到应用目录）。
-- jsonhero：前端已拆分到同级 `json-hero-frontend` 项目，服务端 API 由 Avalonia 进程内的
-  Kestrel 实现，不再启动 Node.js。构建后的 SPA 与 API 使用同一个 loopback 地址。
+- jsoncrack：由 Kestrel 原生托管，行为与 Electron 版一致；发布时自动下载 latest Release 源码，
+  在临时目录构建并且只打包 `apps/www/out` 静态文件。
+- jsonhero：前端已拆分为独立的 `changdy/json-hero-frontend` 项目，服务端 API 由 Avalonia 进程内的
+  Kestrel 实现，不再启动 Node.js。发布时直接使用 `changdy/json-hero-frontend` latest Release
+  中的预构建静态文件；SPA 与 API 使用同一个 loopback 地址。
 - 文档只保存在内存中（最多 500 条、默认 24 小时过期），应用退出或重启后清空；这符合本地
   预览用途，但与可跨进程保存/分享的线上 JSON Hero 不同。
 - URL 文档和 URL 内容预览仍可能访问用户指定的网络地址；普通本地 JSON 预览完全离线。
