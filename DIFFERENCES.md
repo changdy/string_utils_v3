@@ -11,6 +11,13 @@
 | 图标交互动效 | CSS 无限渐变 + 图标 hover 360° 翻转 | Hover 时仅内部图标以透明度循环淡入淡出；点击保留压缩回弹与单次高光 | Hover 使用低干扰的呼吸灯提示，按钮尺寸和菜单布局保持稳定 |
 | Enter 按钮气泡动画 | bubbly-button CSS radial-gradient 粒子动画 | Avalonia 原生绘制的上下气泡散开 + 按钮缩放回弹 | 粒子轨迹不逐像素复刻，时长和整体观感接近 |
 
+右侧功能图标透明度实现说明：
+
+- 功能图标由 `Avalonia.Svg.Skia` 加载为 `SvgImage`，属于自定义 Skia 绘制内容，而不是普通位图。
+- 在当前透明顶层窗口中，仅设置 `Image.Opacity` 会命中 Avalonia 的默认透明度优化路径。实测中间值没有正确合成：`Opacity=0` 时图标会被裁掉，但大于 0 的值看起来接近完全不透明；0～1 往返动画只会偶尔闪烁。
+- 为图标设置 `RenderOptions.RequiresFullOpacityHandling="True"` 后，Avalonia 会对该自定义绘制使用完整透明度处理，0～1 动画能够平滑淡入淡出。
+- 默认配置为 `Opacity="1"`；Hover 后使用正弦缓动在 `1` 与 `0.25` 之间以 `1.2s` 时长无限往返，形成呼吸灯效果。动画保留 `RequiresFullOpacityHandling`，确保 SVG 的中间透明度能够正确合成。
+
 Enter 按钮粒子参数调整记录：
 
 - 初始实现：粒子半径 `2.8-5.2` 逻辑像素；水平移动 `0-13`、垂直移动 `24-48`、弧线偏移 `1.2-2.0` 逻辑像素。
