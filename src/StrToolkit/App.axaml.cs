@@ -253,10 +253,7 @@ public partial class App : Application
                 var screen = _mainWindow.Screens.ScreenFromPoint(cursor) ?? _mainWindow.Screens.Primary;
                 if (screen is not null)
                 {
-                    var bounds = screen.WorkingArea;
-                    target = new PixelPoint(
-                        Math.Clamp(target.X, bounds.X, Math.Max(bounds.X, bounds.X + bounds.Width - MainWindow.DefaultWindowWidth)),
-                        Math.Clamp(target.Y, bounds.Y, Math.Max(bounds.Y, bounds.Y + bounds.Height - MainWindow.DefaultWindowHeight)));
+                    target = ClampToWorkingArea(target, screen);
                 }
                 _mainWindow.Position = target;
             }
@@ -266,10 +263,7 @@ public partial class App : Application
                 var screen = _mainWindow.Screens.ScreenFromWindow(_mainWindow) ?? _mainWindow.Screens.Primary;
                 if (screen is not null)
                 {
-                    var bounds = screen.WorkingArea;
-                    _mainWindow.Position = new PixelPoint(
-                        bounds.X + (bounds.Width - MainWindow.DefaultWindowWidth) / 2,
-                        bounds.Y + (bounds.Height - MainWindow.DefaultWindowHeight) / 3);
+                    _mainWindow.Position = GetWorkingAreaPosition(screen, verticalDivisor: 3);
                 }
             }
         }
@@ -284,6 +278,37 @@ public partial class App : Application
         // 每次热键/托盘唤醒都强制读剪贴板，不依赖 Activated 是否再次触发
         // （窗口已显示时再按热键，Activated 经常不会发，导致正文不刷新）
         _mainWindow.LoadClipboardFromWake();
+    }
+
+    /// <summary>
+    /// Width/Height 是逻辑像素，Screen.WorkingArea 和 Window.Position 是物理像素；
+    /// 边界计算必须使用目标屏幕的缩放比例进行换算。
+    /// </summary>
+    private static PixelSize GetWindowPixelSize(Screen screen) =>
+        PixelSize.FromSize(
+            new Size(MainWindow.DefaultWindowWidth, MainWindow.DefaultWindowHeight),
+            screen.Scaling);
+
+    private static PixelPoint ClampToWorkingArea(PixelPoint target, Screen screen)
+    {
+        var bounds = screen.WorkingArea;
+        var windowSize = GetWindowPixelSize(screen);
+        int maxX = bounds.X + Math.Max(0, bounds.Width - windowSize.Width);
+        int maxY = bounds.Y + Math.Max(0, bounds.Height - windowSize.Height);
+        return new PixelPoint(
+            Math.Clamp(target.X, bounds.X, maxX),
+            Math.Clamp(target.Y, bounds.Y, maxY));
+    }
+
+    private static PixelPoint GetWorkingAreaPosition(Screen screen, int verticalDivisor)
+    {
+        var bounds = screen.WorkingArea;
+        var windowSize = GetWindowPixelSize(screen);
+        int availableWidth = Math.Max(0, bounds.Width - windowSize.Width);
+        int availableHeight = Math.Max(0, bounds.Height - windowSize.Height);
+        return new PixelPoint(
+            bounds.X + availableWidth / 2,
+            bounds.Y + availableHeight / verticalDivisor);
     }
 
     private void SetupTray()
@@ -357,10 +382,7 @@ public partial class App : Application
             var screen = _mainWindow.Screens.Primary;
             if (screen is not null)
             {
-                var bounds = screen.WorkingArea;
-                _mainWindow.Position = new PixelPoint(
-                    bounds.X + (bounds.Width - MainWindow.DefaultWindowWidth) / 2,
-                    bounds.Y + (bounds.Height - MainWindow.DefaultWindowHeight) / 2);
+                _mainWindow.Position = GetWorkingAreaPosition(screen, verticalDivisor: 2);
             }
             _mainWindow.MarkWake();
             _mainWindow.Show();

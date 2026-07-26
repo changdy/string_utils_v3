@@ -80,7 +80,12 @@ avalonia_ui/
       SingleInstance.cs      命名 Mutex + 命名管道
       AutoLaunchService.cs   三平台开机自启
       JsonCrackServer.cs     Kestrel 托管 jsoncrack 静态资源（端口 9987-10087）
-      JsonHeroService.cs     Kestrel 内存 API + JSON Hero SPA 托管（端口 13001-13101）
+      JsonHeroService.cs     JSON Hero 服务生命周期门面（端口 13001-13101）
+      JsonHero/
+        DocumentStore.cs     内存文档、TTL 与容量淘汰
+        RemoteFetcher.cs     远程抓取、URL 预览与 HTML 元数据解析
+        ApiEndpoints.cs      Kestrel API 路由与响应契约
+        FrontendHost.cs      JSON Hero SPA 资源发现与静态托管
       JsonPreviewService.cs  预览入口 + 系统浏览器打开
       VsCodeDiffService.cs   code --diff 临时文件对比
     Assets/

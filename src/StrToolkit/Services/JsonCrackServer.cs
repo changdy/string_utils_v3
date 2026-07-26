@@ -43,6 +43,7 @@ public sealed class JsonCrackServer
             {
                 var builder = WebApplication.CreateBuilder();
                 builder.Logging.ClearProviders();
+                builder.WebHost.UseSockets(options => options.IOQueueCount = 0);
                 builder.WebHost.ConfigureKestrel(o => o.Listen(System.Net.IPAddress.Loopback, port));
                 app = builder.Build();
 
