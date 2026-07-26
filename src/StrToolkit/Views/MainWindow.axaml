@@ -43,8 +43,9 @@
                              TextWrapping="Wrap"
                              Background="Transparent"
                              BorderThickness="0"
-                             FontFamily="JetBrains Mono,Consolas,Menlo,monospace"
-                             FontSize="13"
+                             FontFamily="Maple Mono NF CN,Maple Mono,Sarasa Mono SC,LXGW WenKai Mono,JetBrains Mono,Cascadia Mono,Consolas,Menlo,monospace"
+                             FontSize="16"
+                             LineHeight="20"
                              Padding="5"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Hidden">
