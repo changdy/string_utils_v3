@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
@@ -34,19 +33,19 @@ internal static class UserScriptLibraryRegistry
             "__strToolkitGetRandomUInt32",
             new Func<double>(GetRandomUInt32));
         engine.SetValue(
-            "__strToolkitAtob",
-            new Func<string, string>(Atob));
+            "__strToolkitBase64Decode",
+            new Func<string, string>(Base64Decode));
         engine.SetValue(
-            "__strToolkitBtoa",
-            new Func<string, string>(Btoa));
+            "__strToolkitBase64Encode",
+            new Func<string, string>(Base64Encode));
         engine.Execute("""
             (() => {
                 const getRandomUInt32 = __strToolkitGetRandomUInt32;
-                const decodeBase64 = __strToolkitAtob;
-                const encodeBase64 = __strToolkitBtoa;
+                const decodeBase64 = __strToolkitBase64Decode;
+                const encodeBase64 = __strToolkitBase64Encode;
                 delete globalThis.__strToolkitGetRandomUInt32;
-                delete globalThis.__strToolkitAtob;
-                delete globalThis.__strToolkitBtoa;
+                delete globalThis.__strToolkitBase64Decode;
+                delete globalThis.__strToolkitBase64Encode;
                 const crypto = Object.freeze({
                     getRandomValues(array) {
                         if (!array || typeof array.length !== "number") {
@@ -64,23 +63,15 @@ internal static class UserScriptLibraryRegistry
                     configurable: false,
                     enumerable: true
                 });
-                Object.defineProperty(globalThis, "atob", {
+                Object.defineProperty(globalThis, "base64Decode", {
                     value: value => {
-                        const text = String(value)
-                            .replace(/[ \t\n\f\r]/g, "");
-                        const paddingIndex = text.indexOf("=");
-                        const body = paddingIndex < 0
-                            ? text
-                            : text.slice(0, paddingIndex);
-                        const padding = paddingIndex < 0
-                            ? ""
-                            : text.slice(paddingIndex);
-                        if (!/^[A-Za-z0-9+/]*$/.test(body) ||
-                            (padding && !/^={1,2}$/.test(padding)) ||
-                            (padding && text.length % 4 !== 0) ||
-                            body.length % 4 === 1) {
+                        const text = String(value).replace(/\s/g, "");
+                        const hasPadding = text.includes("=");
+                        if (!/^[A-Za-z0-9+/]*={0,2}$/.test(text) ||
+                            (hasPadding && text.length % 4 !== 0) ||
+                            text.length % 4 === 1) {
                             throw new TypeError(
-                                "atob 输入不是有效的 Base64");
+                                "base64Decode 输入不是有效的 Base64");
                         }
                         return decodeBase64(text);
                     },
@@ -88,20 +79,8 @@ internal static class UserScriptLibraryRegistry
                     configurable: false,
                     enumerable: true
                 });
-                Object.defineProperty(globalThis, "btoa", {
-                    value: value => {
-                        const text = String(value);
-                        for (let index = 0;
-                            index < text.length;
-                            index++) {
-                            if (text.charCodeAt(index) > 0xff) {
-                                throw new TypeError(
-                                    "btoa 仅接受 Latin-1 字符；" +
-                                    "请先将 Unicode 文本编码为 UTF-8 字节串");
-                            }
-                        }
-                        return encodeBase64(text);
-                    },
+                Object.defineProperty(globalThis, "base64Encode", {
+                    value: value => encodeBase64(String(value)),
                     writable: false,
                     configurable: false,
                     enumerable: true
@@ -159,69 +138,48 @@ internal static class UserScriptLibraryRegistry
         return BitConverter.ToUInt32(bytes);
     }
 
-    private static string Atob(string value)
+    private static readonly Encoding StrictUtf8 =
+        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
+    private static string Base64Encode(string value)
     {
-        var normalized = new StringBuilder(value.Length + 2);
-        foreach (char character in value)
+        return Convert.ToBase64String(StrictUtf8.GetBytes(value));
+    }
+
+    private static string Base64Decode(string value)
+    {
+        // JS 侧已完成字符集与填充校验；这里补齐缺失的填充后按 UTF-8 解码。
+        var normalized = new StringBuilder(value);
+        int remainder = normalized.Length % 4;
+        if (remainder > 1)
         {
-            if (character is ' ' or '\t' or '\n' or '\f' or '\r')
-            {
-                continue;
-            }
-            normalized.Append(character);
+            normalized.Append('=', 4 - remainder);
         }
 
-        int paddingIndex = normalized.ToString().IndexOf('=');
-        if (paddingIndex >= 0)
-        {
-            int paddingLength = normalized.Length - paddingIndex;
-            if (normalized.Length % 4 != 0 ||
-                paddingLength > 2 ||
-                normalized.ToString(paddingIndex, paddingLength)
-                    .Any(character => character != '='))
-            {
-                throw new ArgumentException("atob 输入不是有效的 Base64");
-            }
-        }
-        else
-        {
-            int remainder = normalized.Length % 4;
-            if (remainder == 1)
-            {
-                throw new ArgumentException("atob 输入不是有效的 Base64");
-            }
-            if (remainder > 1)
-            {
-                normalized.Append('=', 4 - remainder);
-            }
-        }
-
+        byte[] bytes;
         try
         {
-            return Encoding.Latin1.GetString(
-                Convert.FromBase64String(normalized.ToString()));
+            bytes = Convert.FromBase64String(normalized.ToString());
         }
         catch (FormatException exception)
         {
             throw new ArgumentException(
-                "atob 输入不是有效的 Base64",
+                "base64Decode 输入不是有效的 Base64",
                 nameof(value),
                 exception);
         }
-    }
 
-    private static string Btoa(string value)
-    {
-        foreach (char character in value)
+        try
         {
-            if (character > byte.MaxValue)
-            {
-                throw new ArgumentException(
-                    "btoa 仅接受 Latin-1 字符；请先将 Unicode 文本编码为 UTF-8 字节串",
-                    nameof(value));
-            }
+            return StrictUtf8.GetString(bytes);
         }
-        return Convert.ToBase64String(Encoding.Latin1.GetBytes(value));
+        catch (DecoderFallbackException exception)
+        {
+            throw new ArgumentException(
+                "base64Decode 结果不是有效的 UTF-8 文本",
+                nameof(value),
+                exception);
+        }
     }
 
     private static string ReadEmbeddedText(string resourceName)
