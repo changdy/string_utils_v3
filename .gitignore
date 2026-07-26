@@ -3,6 +3,7 @@
 [Oo]bj/
 [Aa]rtifacts/
 [Tt]est[Rr]esults/
+publish/
 .codex-build/
 
 # Generated JSON preview web assets (never version these build outputs)
