@@ -26,7 +26,55 @@ public partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<SolverItemViewModel> VisibleSolvers { get; } = new();
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DisplayText))]
     private string _bodyText = "";
+
+    /// <summary>
+    /// 展示用文本：超过预览上限时截断显示，避免整段换行排版卡住 UI 线程；
+    /// 处理（处理器打分 / Execute）仍基于完整的 <see cref="BodyText"/>。
+    /// </summary>
+    public string DisplayText => BuildDisplayText(BodyText);
+
+    /// <summary>UI 预览的字符数上限；完整内容始终保留在 <see cref="BodyText"/>。</summary>
+    public const int MaxDisplayChars = 8_000;
+
+    /// <summary>UI 预览的逻辑行上限，防止大量短行绕过字符数限制。</summary>
+    public const int MaxDisplayLines = 160;
+
+    private static string BuildDisplayText(string text)
+    {
+        int end = Math.Min(text.Length, MaxDisplayChars);
+        int lineCount = 1;
+        for (int index = 0; index < end; index++)
+        {
+            if (text[index] != '\n')
+            {
+                continue;
+            }
+
+            if (lineCount >= MaxDisplayLines)
+            {
+                end = index;
+                break;
+            }
+            lineCount++;
+        }
+
+        if (end == text.Length)
+        {
+            return text;
+        }
+
+        // 避免在 UTF-16 代理对（emoji 等）中间截断。
+        if (char.IsHighSurrogate(text[end - 1]))
+        {
+            end--;
+        }
+
+        return string.Concat(
+            text.AsSpan(0, end),
+            $"\n\n… [内容过长：共 {text.Length:N0} 字符，仅显示前 {end:N0}，处理仍基于完整内容]");
+    }
 
     /// <summary>是否处于"修改快捷键"模式。</summary>
     [ObservableProperty]

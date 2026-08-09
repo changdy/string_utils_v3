@@ -64,8 +64,15 @@ public partial class MainWindow : Window
             }
             Dispatcher.UIThread.Post(HideAndReset);
         };
-        // 兜底：从其它应用切回本窗时也刷新；热键主路径在 ShowWindowAtCursor 里主动调用
-        Activated += (_, _) => LoadClipboardFromWake();
+        // 兜底：从其它应用切回本窗时也刷新。热键主路径在 ShowWindowAtCursor
+        // 显式加载；激活发生在同一次唤醒的宽限期内时不重复读取剪贴板。
+        Activated += (_, _) =>
+        {
+            if ((DateTime.UtcNow - _lastWake).TotalMilliseconds >= WakeGraceMs)
+            {
+                LoadClipboardFromWake();
+            }
+        };
         AddHandler(KeyDownEvent, OnPreviewKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 

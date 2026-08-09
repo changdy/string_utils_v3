@@ -37,7 +37,7 @@
                                   Focusable="False"
                                   HorizontalScrollBarVisibility="Disabled"
                                   VerticalScrollBarVisibility="Hidden">
-                        <TextBlock Text="{Binding BodyText}"
+                        <TextBlock Text="{Binding DisplayText}"
                                    IsHitTestVisible="False"
                                    TextWrapping="Wrap"
                                    Background="Transparent"
