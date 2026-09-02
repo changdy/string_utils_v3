@@ -271,7 +271,7 @@ JSONCrack 的静态产物，不包含源码、`node_modules` 或包管理文件�
 创建对应的 `vX.Y.Z` 标签和 GitHub Release，并上传全部四个平台的软件包：
 
 ```xml
-<Version>4.0.7</Version>
+<Version>4.0.8</Version>
 ```
 
 如果版本标签已存在但指向其他提交，发布会直接失败，以免覆盖历史版本。
