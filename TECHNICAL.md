@@ -50,6 +50,41 @@ installer/windows/
 
 更完整的架构与核心流程说明见 [DESIGN.md](DESIGN.md)。
 
+## 快捷键与窗口诊断
+
+应用默认将 UTF-8 日志异步写入 `SettingsService.UserDataDir/logs`，Windows 对应
+`%APPDATA%\str-toolkit-avalonia\logs`。托盘菜单“打开日志目录”会额外记录一次当前监听和
+窗口状态，再打开目录。每个进程使用独立文件，单文件达到约 2 MiB 后轮转，保留最近 7 个
+文件；仍在写入、无法删除的文件会保留。写盘失败不会阻塞快捷键回调，30 秒后重试。
+
+日志包含本地时间与时区、进程/线程 ID、版本和程序路径，可以先确认运行的是新构建的
+安装版，而不是仍在后台运行的旧版本。诊断不记录剪贴板正文、窗口标题或普通输入的
+按键序列；剪贴板只记录长度和处理耗时。
+
+出现“按快捷键没有弹窗”时，记录时间，打开托盘日志目录，检查相邻记录：
+
+| 记录 | 排查方向 |
+|------|----------|
+| `Hotkey.Matched` | 底层已识别组合键，`trigger` 可关联 `Wake.Queued` |
+| `Hotkey.ModifierMismatch` / `Hotkey.RepeatIgnored` | 修饰键不完全匹配，或按键状态仍被判定为按住 |
+| `Wake.Queued` / `Wake.Dispatched` | 用 `request` 串联唤醒；只有排队记录或排队耗时很长时检查 UI 阻塞 |
+| `Window.ShowReturned` / `Window.ForegroundResult` / `Wake.Verified` | 判断窗口是否显示、原生前台激活是否成功，以及 500 毫秒后的状态 |
+| `Window.Hide` | 明确区分失焦、外部点击、托盘切换和 Esc 导致的隐藏 |
+| `Diagnostics.Heartbeat` / `Diagnostics.UI` | 每 30 秒记录监听状态、键鼠事件计数和最近事件间隔、UI 队列耗时 |
+| `Diagnostics.UIStillPending` | 上一次 UI 心跳仍未执行，界面线程可能阻塞 |
+
+`available=true` / `running=true` 仅表示库所报告的状态。Windows 可能在低级键盘钩子回调
+超时后静默移除钩子，不能仅凭这两个字段断言监听正常，需要对照事件计数及实际操作。
+系统行为见 [微软 LowLevelKeyboardProc 文档](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)。
+
+窗口隐藏现在会在实际执行时复查唤醒代次和激活状态，丢弃在新一次唤醒之前排队的失焦和
+鼠标通知。以下回归检查使用 Avalonia Headless，不弹出真实窗口、不注册系统全局钩子、
+不读取用户配置：
+
+```bash
+dotnet run --project tests/StrToolkit.Diagnostics.Tests -c Release -p:PrepareWebAssetsOnBuild=false
+```
+
 ## 用户脚本开发
 
 ### 脚本目录
@@ -271,7 +306,7 @@ JSONCrack 的静态产物，不包含源码、`node_modules` 或包管理文件�
 创建对应的 `vX.Y.Z` 标签和 GitHub Release，并上传全部四个平台的软件包：
 
 ```xml
-<Version>4.0.8</Version>
+<Version>4.0.10</Version>
 ```
 
 如果版本标签已存在但指向其他提交，发布会直接失败，以免覆盖历史版本。

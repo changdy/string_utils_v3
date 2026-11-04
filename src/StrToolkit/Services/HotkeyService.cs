@@ -33,11 +33,18 @@ public sealed class HotkeyService : IDisposable
     private int _disposed;
     private volatile bool _isAvailable;
     private string? _lastError;
+    private long _keyboardEventCount;
+    private long _mousePressCount;
+    private long _lastKeyboardEventAt;
+    private long _lastMousePressAt;
+    private long _pressSequence;
+    private long _lastMismatchLogAt;
+    private int _repeatWasLogged;
 
     public bool IsAvailable => _isAvailable;
     public string? LastError => _lastError;
 
-    public event Action? HotkeyPressed;
+    public event Action<long>? HotkeyPressed;
 
     /// <summary>底层全局监听可用状态发生变化。</summary>
     public event Action<bool, string?>? AvailabilityChanged;
@@ -64,6 +71,7 @@ public sealed class HotkeyService : IDisposable
             return await _startup.Task.ConfigureAwait(false);
         }
 
+        AppLog.Info("Hotkey.Start: 请求启动全局监听。");
         if (IsWaylandSession())
         {
             SetUnavailable("Linux Wayland 不允许普通应用静默监听全局快捷键，请使用托盘入口或切换到 X11 会话。");
@@ -89,16 +97,20 @@ public sealed class HotkeyService : IDisposable
     {
         if (!TryParseAccelerator(accelerator, out var binding))
         {
+            AppLog.Warn($"Hotkey.Register: 无效快捷键 accelerator={accelerator}");
             return false;
         }
 
         Volatile.Write(ref _binding, binding);
         ResetHotkeyState();
+        AppLog.Info($"Hotkey.Register: accelerator={accelerator}, key={binding.Key}, " +
+                    $"modifiers={string.Join('+', binding.Modifiers)}");
         return true;
     }
 
     public void Unregister()
     {
+        AppLog.Info("Hotkey.Unregister: 清除快捷键绑定。");
         Volatile.Write(ref _binding, null);
         ResetHotkeyState();
     }
@@ -111,6 +123,7 @@ public sealed class HotkeyService : IDisposable
             int generationBeforeRun = Volatile.Read(ref _hookEnableGeneration);
             try
             {
+                AppLog.Info($"Hotkey.Run: 启动监听 generation={generationBeforeRun}");
                 await _hook.RunAsync().ConfigureAwait(false);
                 if (Volatile.Read(ref _disposed) != 0)
                 {
@@ -153,12 +166,14 @@ public sealed class HotkeyService : IDisposable
         _isAvailable = true;
         Interlocked.Increment(ref _hookEnableGeneration);
         ResetHotkeyState();
+        AppLog.Info($"Hotkey.Enabled: generation={_hookEnableGeneration}");
         _startup.TrySetResult(true);
         AvailabilityChanged?.Invoke(true, null);
     }
 
     private void OnHookDisabled(object? sender, HookEventArgs e)
     {
+        AppLog.Info($"Hotkey.Disabled: disposed={Volatile.Read(ref _disposed)}");
         _isAvailable = false;
         ResetHotkeyState();
         if (Volatile.Read(ref _disposed) == 0)
@@ -169,11 +184,15 @@ public sealed class HotkeyService : IDisposable
 
     private void OnMousePressed(object? sender, MouseHookEventArgs e)
     {
+        Interlocked.Increment(ref _mousePressCount);
+        Interlocked.Exchange(ref _lastMousePressAt, Environment.TickCount64);
         GlobalMousePressed?.Invoke(e.Data.X, e.Data.Y);
     }
 
     private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)
     {
+        Interlocked.Increment(ref _keyboardEventCount);
+        Interlocked.Exchange(ref _lastKeyboardEventAt, Environment.TickCount64);
         var binding = Volatile.Read(ref _binding);
         if (!_isAvailable || binding is null || e.Data.KeyCode != binding.Key)
         {
@@ -182,6 +201,15 @@ public sealed class HotkeyService : IDisposable
 
         if (!HasExactModifiers(e.RawEvent.Mask, binding.Modifiers))
         {
+            // 只记录带修饰键的候选组合，不记录普通文本输入；长按时限制日志频率。
+            long mismatchAt = Environment.TickCount64;
+            if ((e.RawEvent.Mask & (ModifierMask.Ctrl | ModifierMask.Alt | ModifierMask.Shift | ModifierMask.Meta)) != 0 &&
+                mismatchAt - _lastMismatchLogAt >= 1_000)
+            {
+                _lastMismatchLogAt = mismatchAt;
+                AppLog.Info($"Hotkey.ModifierMismatch: key={binding.Key}, mask={e.RawEvent.Mask}, " +
+                            $"required={string.Join('+', binding.Modifiers)}");
+            }
             // 同一主键以普通按键形式再次按下，说明上一轮物理按键已经结束，即使它的
             // KeyUp 曾被漏报也不应继续保留闩锁或抑制下一次普通 KeyUp。
             ResetHotkeyState();
@@ -196,6 +224,10 @@ public sealed class HotkeyService : IDisposable
             long previous = Interlocked.Read(ref _lastHotkeyPressedAt);
             if (now - previous < HotkeyLatchRecoveryMilliseconds)
             {
+                if (Interlocked.Exchange(ref _repeatWasLogged, 1) == 0)
+                {
+                    AppLog.Info($"Hotkey.RepeatIgnored: heldMs={now - previous}, key={binding.Key}");
+                }
                 SuppressIfSupported(e);
                 return;
             }
@@ -206,11 +238,22 @@ public sealed class HotkeyService : IDisposable
         Interlocked.Exchange(ref _lastHotkeyPressedAt, now);
         Interlocked.Exchange(ref _suppressMainKeyUp, 1);
         SuppressIfSupported(e);
-        HotkeyPressed?.Invoke();
+        long sequence = Interlocked.Increment(ref _pressSequence);
+        AppLog.Info($"Hotkey.Matched: trigger={sequence}, key={binding.Key}, mask={e.RawEvent.Mask}");
+        try
+        {
+            HotkeyPressed?.Invoke(sequence);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error($"Hotkey.DispatchFailed: trigger={sequence}", exception);
+        }
     }
 
     private void OnKeyReleased(object? sender, KeyboardHookEventArgs e)
     {
+        Interlocked.Increment(ref _keyboardEventCount);
+        Interlocked.Exchange(ref _lastKeyboardEventAt, Environment.TickCount64);
         var binding = Volatile.Read(ref _binding);
         if (binding is null)
         {
@@ -224,8 +267,10 @@ public sealed class HotkeyService : IDisposable
             // 普通输入同名按键时没有对应的快捷键 KeyDown，不应吞掉它的 KeyUp。
             if (Interlocked.Exchange(ref _suppressMainKeyUp, 0) != 0)
             {
+                AppLog.Info($"Hotkey.Released: trigger={Interlocked.Read(ref _pressSequence)}");
                 SuppressIfSupported(e);
             }
+            Interlocked.Exchange(ref _repeatWasLogged, 0);
             return;
         }
 
@@ -233,8 +278,12 @@ public sealed class HotkeyService : IDisposable
         // 同样解除按下闩锁。保留 _suppressMainKeyUp，若稍后收到主键 KeyUp 仍应抑制。
         if (IsRequiredModifierKey(binding, e.Data.KeyCode))
         {
-            Interlocked.Exchange(ref _hotkeyDown, 0);
+            if (Interlocked.Exchange(ref _hotkeyDown, 0) != 0)
+            {
+                AppLog.Info($"Hotkey.ModifierReleased: trigger={Interlocked.Read(ref _pressSequence)}, key={e.Data.KeyCode}");
+            }
             Interlocked.Exchange(ref _lastHotkeyPressedAt, 0);
+            Interlocked.Exchange(ref _repeatWasLogged, 0);
         }
     }
 
@@ -243,6 +292,21 @@ public sealed class HotkeyService : IDisposable
         Interlocked.Exchange(ref _hotkeyDown, 0);
         Interlocked.Exchange(ref _suppressMainKeyUp, 0);
         Interlocked.Exchange(ref _lastHotkeyPressedAt, 0);
+        Interlocked.Exchange(ref _repeatWasLogged, 0);
+    }
+
+    /// <summary>只包含计数和时间，不记录用户输入的按键序列。</summary>
+    internal string GetDiagnosticState()
+    {
+        var binding = Volatile.Read(ref _binding);
+        long now = Environment.TickCount64;
+        long keyboardAt = Interlocked.Read(ref _lastKeyboardEventAt);
+        long mouseAt = Interlocked.Read(ref _lastMousePressAt);
+        return $"available={_isAvailable}, running={_hook.IsRunning}, generation={Volatile.Read(ref _hookEnableGeneration)}, " +
+               $"key={binding?.Key}, latch={Volatile.Read(ref _hotkeyDown)}, " +
+               $"keyboardEvents={Interlocked.Read(ref _keyboardEventCount)}, keyboardAgeMs={(keyboardAt == 0 ? -1 : now - keyboardAt)}, " +
+               $"mousePresses={Interlocked.Read(ref _mousePressCount)}, mouseAgeMs={(mouseAt == 0 ? -1 : now - mouseAt)}, " +
+               $"triggers={Interlocked.Read(ref _pressSequence)}, error={_lastError}";
     }
 
     private static bool IsRequiredModifierKey(HotkeyBinding binding, KeyCode key)
@@ -421,6 +485,7 @@ public sealed class HotkeyService : IDisposable
 
     private void SetUnavailable(string message)
     {
+        AppLog.Warn($"Hotkey.Unavailable: {message}");
         _lastError = message;
         _isAvailable = false;
         AvailabilityChanged?.Invoke(false, message);

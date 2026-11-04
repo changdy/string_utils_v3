@@ -4,7 +4,7 @@ using Avalonia.Controls;
 
 namespace StrToolkit.Services;
 
-/// <summary>强制窗口获得前台焦点（绕过 Windows 前台锁定，保证失焦隐藏可靠触发）。</summary>
+/// <summary>尝试让窗口获得前台焦点，并记录原生调用结果。</summary>
 public static class WindowActivator
 {
     public static void ForceForeground(Window window)
@@ -18,25 +18,59 @@ public static class WindowActivator
             var hwnd = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
             if (hwnd == IntPtr.Zero)
             {
+                AppLog.Warn("Window.Foreground: 窗口尚无原生句柄。");
                 return;
             }
             var foreground = GetForegroundWindow();
             uint foregroundThread = GetWindowThreadProcessId(foreground, out _);
             uint currentThread = GetCurrentThreadId();
-            if (foreground != IntPtr.Zero && foregroundThread != currentThread)
+            AppLog.Info($"Window.ForegroundBegin: target=0x{hwnd.ToInt64():X}, " +
+                        $"foreground=0x{foreground.ToInt64():X}, foregroundThread={foregroundThread}, currentThread={currentThread}");
+            bool attached = false;
+            bool result;
+            try
             {
-                AttachThreadInput(currentThread, foregroundThread, true);
-                SetForegroundWindow(hwnd);
-                AttachThreadInput(currentThread, foregroundThread, false);
+                if (foreground != IntPtr.Zero && foregroundThread != currentThread)
+                {
+                    attached = AttachThreadInput(currentThread, foregroundThread, true);
+                    if (!attached)
+                    {
+                        AppLog.Warn($"Window.AttachThreadInputFailed: error={Marshal.GetLastWin32Error()}");
+                    }
+                }
+                result = SetForegroundWindow(hwnd);
             }
-            else
+            finally
             {
-                SetForegroundWindow(hwnd);
+                if (attached && !AttachThreadInput(currentThread, foregroundThread, false))
+                {
+                    AppLog.Warn($"Window.DetachThreadInputFailed: error={Marshal.GetLastWin32Error()}");
+                }
             }
+            string state = $"Window.ForegroundResult: result={result}, {GetDiagnosticState(window)}";
+            if (result && GetForegroundWindow() == hwnd) AppLog.Info(state);
+            else AppLog.Warn(state);
         }
-        catch
+        catch (Exception exception)
         {
-            // 激活失败不影响窗口显示
+            AppLog.Error("Window.ForegroundFailed", exception);
+        }
+    }
+
+    internal static string GetDiagnosticState(Window window)
+    {
+        if (!OperatingSystem.IsWindows()) return "foreground=unsupported";
+        try
+        {
+            IntPtr foreground = GetForegroundWindow();
+            uint thread = GetWindowThreadProcessId(foreground, out uint process);
+            IntPtr target = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+            return $"foreground=0x{foreground.ToInt64():X}, foregroundPid={process}, foregroundThread={thread}, " +
+                   $"foregroundIsTarget={target != IntPtr.Zero && foreground == target}";
+        }
+        catch (Exception exception)
+        {
+            return $"foregroundError={exception.GetType().Name}";
         }
     }
 
@@ -53,7 +87,7 @@ public static class WindowActivator
     [DllImport("kernel32.dll")]
     private static extern uint GetCurrentThreadId();
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
 }

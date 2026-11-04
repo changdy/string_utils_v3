@@ -33,6 +33,10 @@ public partial class App : Application
     private MainWindow _mainWindow = null!;
     private TrayIcon? _trayIcon;
     private DateTime _lastAutoHide = DateTime.MinValue;
+    private Timer? _diagnosticsTimer;
+    private long _wakeRequestSequence;
+    private int _diagnosticUiPending;
+    private long _diagnosticUiQueuedAt;
 
     public override void Initialize()
     {
@@ -68,14 +72,16 @@ public partial class App : Application
 
         SetupHotkey();
         SetupTray();
+        _diagnosticsTimer = new Timer(WriteDiagnosticHeartbeat, null,
+            TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
 
         SingleInstance.SecondInstanceLaunched += () =>
-            Dispatcher.UIThread.Post(() => ShowWindowAtCursor());
+            QueueWindowWake("second-instance");
 
         base.OnFrameworkInitializationCompleted();
 
         // 首次启动也应给出可见反馈；后续仍保持失焦隐藏、快捷键和托盘唤醒语义。
-        Dispatcher.UIThread.Post(ShowWindowAtCursor);
+        QueueWindowWake("startup");
     }
 
     private async Task StartWebServicesAsync(CancellationToken cancellationToken)
@@ -108,6 +114,8 @@ public partial class App : Application
 
     private void OnApplicationExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        AppLog.Info($"应用开始退出: exitCode={e.ApplicationExitCode}");
+        _diagnosticsTimer?.Dispose();
         _hotkey?.Dispose();
 
         if (Interlocked.Exchange(ref _webServicesShutdownStarted, 1) != 0)
@@ -205,7 +213,7 @@ public partial class App : Application
         try
         {
             _hotkey = new HotkeyService();
-            _hotkey.HotkeyPressed += () => Dispatcher.UIThread.Post(ShowWindowAtCursor);
+            _hotkey.HotkeyPressed += trigger => QueueWindowWake("hotkey", trigger);
             _hotkey.GlobalMousePressed += OnGlobalMousePressed;
             _hotkey.AvailabilityChanged += (available, message) =>
                 Dispatcher.UIThread.Post(() => UpdateHotkeyAvailability(available, message));
@@ -246,10 +254,18 @@ public partial class App : Application
     /// <summary>点击窗口区域之外时自动隐藏（不依赖窗口激活状态，等效 Electron 的 blur 隐藏）。</summary>
     private void OnGlobalMousePressed(int x, int y)
     {
+        long generation = _mainWindow.WakeGeneration;
+        long pressedAt = Environment.TickCount64;
         Dispatcher.UIThread.Post(() =>
         {
             if (!_mainWindow.IsVisible)
             {
+                return;
+            }
+            if (generation != _mainWindow.WakeGeneration)
+            {
+                AppLog.Info($"Window.StaleMouseIgnored: queuedGeneration={generation}, " +
+                            $"queueDelayMs={Environment.TickCount64 - pressedAt}, {_mainWindow.DiagnosticState}");
                 return;
             }
             var pos = _mainWindow.Position;
@@ -259,13 +275,34 @@ public partial class App : Application
             if (!inside)
             {
                 _lastAutoHide = DateTime.UtcNow;
-                _mainWindow.HideAndReset();
+                _mainWindow.HideAndReset($"outside-click x={x} y={y} queueDelayMs={Environment.TickCount64 - pressedAt}");
             }
         });
     }
 
-    private void ShowWindowAtCursor()
+    private void QueueWindowWake(string source, long trigger = 0)
     {
+        long requestId = Interlocked.Increment(ref _wakeRequestSequence);
+        long queuedAt = Environment.TickCount64;
+        AppLog.Info($"Wake.Queued: request={requestId}, source={source}, trigger={trigger}");
+        Dispatcher.UIThread.Post(() =>
+        {
+            AppLog.Info($"Wake.Dispatched: request={requestId}, source={source}, " +
+                        $"queueDelayMs={Environment.TickCount64 - queuedAt}");
+            try
+            {
+                ShowWindowAtCursor(source, requestId);
+            }
+            catch (Exception exception)
+            {
+                AppLog.Error($"Wake.Failed: request={requestId}, source={source}", exception);
+            }
+        });
+    }
+
+    private void ShowWindowAtCursor(string source, long requestId)
+    {
+        _mainWindow.MarkWake(source, requestId);
         try
         {
             // 对应 Electron: 窗口出现在鼠标位置附近 (x-180, y-100)
@@ -277,6 +314,8 @@ public partial class App : Application
                 {
                     target = ClampToWorkingArea(target, screen);
                 }
+                AppLog.Info($"Window.Position: request={requestId}, cursor={cursor}, target={target}, " +
+                            $"workingArea={screen?.WorkingArea}, screenScaling={screen?.Scaling}");
                 _mainWindow.Position = target;
             }
             else
@@ -289,17 +328,64 @@ public partial class App : Application
                 }
             }
         }
-        catch
+        catch (Exception exception)
         {
-            // 定位失败也照常显示
+            AppLog.Error($"Window.PositionFailed: request={requestId}", exception);
         }
-        _mainWindow.MarkWake();
+        if (_mainWindow.WindowState == WindowState.Minimized)
+        {
+            _mainWindow.WindowState = WindowState.Normal;
+        }
         _mainWindow.Show();
+        AppLog.Info($"Window.ShowReturned: {_mainWindow.DiagnosticState}");
         _mainWindow.Activate();
         WindowActivator.ForceForeground(_mainWindow);
         // 每次热键/托盘唤醒都强制读剪贴板，不依赖 Activated 是否再次触发
         // （窗口已显示时再按热键，Activated 经常不会发，导致正文不刷新）
         _mainWindow.LoadClipboardFromWake();
+        AppLog.Info($"Wake.Completed: source={source}, {_mainWindow.DiagnosticState}");
+        _ = VerifyWakeAsync(_mainWindow.WakeGeneration);
+    }
+
+    private async Task VerifyWakeAsync(long generation)
+    {
+        try
+        {
+            await Task.Delay(500);
+            if (generation != _mainWindow.WakeGeneration) return;
+            string state = $"Wake.Verified: {_mainWindow.DiagnosticState}, {WindowActivator.GetDiagnosticState(_mainWindow)}";
+            if (_mainWindow.IsVisible && _mainWindow.IsActive) AppLog.Info(state);
+            else AppLog.Warn(state);
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Wake.VerifyFailed", exception);
+        }
+    }
+
+    private void WriteDiagnosticHeartbeat(object? state)
+    {
+        try
+        {
+            AppLog.Info($"Diagnostics.Heartbeat: {_hotkey?.GetDiagnosticState() ?? "hotkey=uninitialized"}");
+            if (Interlocked.CompareExchange(ref _diagnosticUiPending, 1, 0) != 0)
+            {
+                AppLog.Warn($"Diagnostics.UIStillPending: queueDelayMs={Environment.TickCount64 - Interlocked.Read(ref _diagnosticUiQueuedAt)}");
+                return;
+            }
+            long queuedAt = Environment.TickCount64;
+            Interlocked.Exchange(ref _diagnosticUiQueuedAt, queuedAt);
+            Dispatcher.UIThread.Post(() =>
+            {
+                Interlocked.Exchange(ref _diagnosticUiPending, 0);
+                AppLog.Info($"Diagnostics.UI: queueDelayMs={Environment.TickCount64 - queuedAt}, " +
+                            $"{_mainWindow.DiagnosticState}, {WindowActivator.GetDiagnosticState(_mainWindow)}");
+            });
+        }
+        catch (Exception exception)
+        {
+            AppLog.Error("Diagnostics.HeartbeatFailed", exception);
+        }
     }
 
     /// <summary>
@@ -392,6 +478,23 @@ public partial class App : Application
         };
         menu.Items.Add(openScriptsItem);
 
+        var openLogsItem = new NativeMenuItem("打开日志目录");
+        openLogsItem.Click += (_, _) =>
+        {
+            try
+            {
+                AppLog.Info($"Diagnostics.OpenLogs: {_mainWindow.DiagnosticState}");
+                WriteDiagnosticHeartbeat(null);
+                Directory.CreateDirectory(AppLog.LogDirectory);
+                JsonPreviewService.OpenInBrowser(new Uri(AppLog.LogDirectory).AbsoluteUri);
+            }
+            catch (Exception exception)
+            {
+                AppLog.Error($"打开日志目录失败: {AppLog.LogDirectory}", exception);
+            }
+        };
+        menu.Items.Add(openLogsItem);
+
         var hotkeyItem = new NativeMenuItem("设置快捷键");
         hotkeyItem.Click += (_, _) =>
         {
@@ -406,7 +509,7 @@ public partial class App : Application
             {
                 _mainWindow.Position = GetWorkingAreaPosition(screen, verticalDivisor: 2);
             }
-            _mainWindow.MarkWake();
+            _mainWindow.MarkWake("hotkey-settings", Interlocked.Increment(ref _wakeRequestSequence));
             _mainWindow.Show();
             _mainWindow.Activate();
             WindowActivator.ForceForeground(_mainWindow);
@@ -433,14 +536,15 @@ public partial class App : Application
         };
         _trayIcon.Clicked += (_, _) =>
         {
+            AppLog.Info($"Tray.Clicked: {_mainWindow.DiagnosticState}, {_hotkey?.GetDiagnosticState()}");
             if (_mainWindow.IsVisible)
             {
-                _mainWindow.HideAndReset();
+                _mainWindow.HideAndReset("tray-click");
             }
             else if ((DateTime.UtcNow - _lastAutoHide).TotalMilliseconds > 400)
             {
                 // 点击托盘时全局鼠标监听刚把窗口隐藏，此时不再重新显示（保持托盘切换语义）
-                ShowWindowAtCursor();
+                QueueWindowWake("tray");
             }
         };
 

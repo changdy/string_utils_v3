@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Avalonia;
 using Avalonia.Svg.Skia;
@@ -12,6 +13,28 @@ internal static class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            AppLog.Error($"未处理异常: terminating={e.IsTerminating}, {e.ExceptionObject}");
+            AppLog.Shutdown();
+        };
+        AppLog.Info($"应用启动: version={typeof(Program).Assembly.GetName().Version}, " +
+                    $"os={RuntimeInformation.OSDescription}, arch={RuntimeInformation.ProcessArchitecture}, " +
+                    $"runtime={RuntimeInformation.FrameworkDescription}, executable={Environment.ProcessPath}, " +
+                    $"logs={AppLog.LogDirectory}");
+        try
+        {
+            Run(args);
+        }
+        finally
+        {
+            AppLog.Info("应用退出。");
+            AppLog.Shutdown();
+        }
+    }
+
+    private static void Run(string[] args)
+    {
         if (args.Contains("--jsonhero-server", StringComparer.OrdinalIgnoreCase))
         {
             RunJsonHeroServer();
@@ -21,6 +44,7 @@ internal static class Program
         if (!SingleInstance.TryAcquire())
         {
             // 已有实例在运行，通知其显示窗口后退出
+            AppLog.Info("检测到已有实例，发送窗口唤起通知。");
             SingleInstance.NotifyFirstInstance();
             return;
         }

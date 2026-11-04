@@ -28,7 +28,15 @@ public partial class MainWindow : Window
     public event Action<string>? HotkeySaveRequested;
 
     private const int WakeGraceMs = 300;
-    private DateTime _lastWake = DateTime.MinValue;
+    private long _lastWakeAt = Environment.TickCount64 - WakeGraceMs;
+    private long _wakeGeneration;
+    private long _wakeRequestId;
+
+    public long WakeGeneration => Interlocked.Read(ref _wakeGeneration);
+    private long WakeAgeMs => Environment.TickCount64 - Interlocked.Read(ref _lastWakeAt);
+    internal string DiagnosticState =>
+        $"request={_wakeRequestId}, generation={WakeGeneration}, visible={IsVisible}, active={IsActive}, " +
+        $"state={WindowState}, position={Position}, size={ClientSize}, scaling={DesktopScaling}, wakeAgeMs={WakeAgeMs}";
 
     /// <summary>
     /// 剪贴板加载代数：每次唤醒递增；隐藏时再递增以作废进行中的异步读取，
@@ -39,7 +47,13 @@ public partial class MainWindow : Window
     private readonly Dictionary<Control, int> _solverAnimationGenerations = new();
 
     /// <summary>唤醒显示前调用：短时间内忽略激活过程中的瞬时失焦，避免窗口闪烁。</summary>
-    public void MarkWake() => _lastWake = DateTime.UtcNow;
+    public void MarkWake(string source, long requestId = 0)
+    {
+        Interlocked.Exchange(ref _lastWakeAt, Environment.TickCount64);
+        Interlocked.Increment(ref _wakeGeneration);
+        _wakeRequestId = requestId;
+        AppLog.Info($"Window.Wake: source={source}, {DiagnosticState}");
+    }
 
     /// <summary>
     /// 热键/托盘唤醒后主动读剪贴板。不依赖 <see cref="Window.Activated"/> 是否触发
@@ -49,6 +63,7 @@ public partial class MainWindow : Window
     {
         ViewModel?.CancelAutoSelect();
         int generation = Interlocked.Increment(ref _clipboardLoadGeneration);
+        AppLog.Info($"Clipboard.Begin: request={_wakeRequestId}, load={generation}");
         _ = ReadClipboardAndSelectAsync(generation);
     }
 
@@ -58,17 +73,30 @@ public partial class MainWindow : Window
 
         Deactivated += (_, _) =>
         {
-            if ((DateTime.UtcNow - _lastWake).TotalMilliseconds < WakeGraceMs)
+            long generation = WakeGeneration;
+            AppLog.Info($"Window.Deactivated: {DiagnosticState}");
+            if (WakeAgeMs < WakeGraceMs)
             {
+                AppLog.Info("Window.DeactivateIgnored: 唤醒宽限期内。");
                 return;
             }
-            Dispatcher.UIThread.Post(HideAndReset);
+            Dispatcher.UIThread.Post(() =>
+            {
+                // 失焦通知排队后可能已重新唤醒或激活，不能让旧通知隐藏新窗口。
+                if (generation != WakeGeneration || IsActive || !IsVisible || WakeAgeMs < WakeGraceMs)
+                {
+                    AppLog.Info($"Window.StaleDeactivateIgnored: queuedGeneration={generation}, {DiagnosticState}");
+                    return;
+                }
+                HideAndReset("deactivated");
+            });
         };
         // 兜底：从其它应用切回本窗时也刷新。热键主路径在 ShowWindowAtCursor
         // 显式加载；激活发生在同一次唤醒的宽限期内时不重复读取剪贴板。
         Activated += (_, _) =>
         {
-            if ((DateTime.UtcNow - _lastWake).TotalMilliseconds >= WakeGraceMs)
+            AppLog.Info($"Window.Activated: {DiagnosticState}");
+            if (WakeAgeMs >= WakeGraceMs)
             {
                 LoadClipboardFromWake();
             }
@@ -76,8 +104,9 @@ public partial class MainWindow : Window
         AddHandler(KeyDownEvent, OnPreviewKeyDown, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
-    public void HideAndReset()
+    public void HideAndReset(string reason = "unspecified")
     {
+        AppLog.Info($"Window.Hide: reason={reason}, {DiagnosticState}");
         // 作废尚未完成的剪贴板读取，防止隐藏后异步结果回写 BodyText
         Interlocked.Increment(ref _clipboardLoadGeneration);
         if (ViewModel is { } vm)
@@ -88,6 +117,7 @@ public partial class MainWindow : Window
         }
         ResetBodyScroll();
         Hide();
+        AppLog.Info($"Window.Hidden: reason={reason}, {DiagnosticState}");
     }
 
     private async Task ReadClipboardAndSelectAsync(int generation)
@@ -98,14 +128,20 @@ public partial class MainWindow : Window
         }
         try
         {
+            long startedAt = Environment.TickCount64;
+            long requestId = _wakeRequestId;
             var text = Clipboard is null ? null : await Clipboard.GetTextAsync();
+            AppLog.Info($"Clipboard.Read: request={requestId}, load={generation}, " +
+                        $"elapsedMs={Environment.TickCount64 - startedAt}, characters={text?.Length ?? 0}");
             // 唤醒被取消、窗口已隐藏、或又一次更新的读取已经开始 → 丢弃本次结果
             if (generation != Volatile.Read(ref _clipboardLoadGeneration))
             {
+                AppLog.Info($"Clipboard.Discarded: load={generation}, reason=superseded");
                 return;
             }
             if (!IsVisible || vm.ChangeHotKeyMode)
             {
+                AppLog.Info($"Clipboard.Discarded: load={generation}, reason=hidden-or-settings");
                 return;
             }
             if (!string.IsNullOrEmpty(text))
@@ -113,6 +149,8 @@ public partial class MainWindow : Window
                 Task autoSelectTask = vm.AutoSelectAsync(text);
                 ResetBodyScroll();
                 await autoSelectTask;
+                AppLog.Info($"Clipboard.SelectCompleted: request={requestId}, load={generation}, " +
+                            $"elapsedMs={Environment.TickCount64 - startedAt}");
             }
         }
         catch (Exception e)
@@ -144,7 +182,7 @@ public partial class MainWindow : Window
         switch (e.Key)
         {
             case Key.Escape:
-                HideAndReset();
+                HideAndReset("escape");
                 e.Handled = true;
                 break;
             case Key.Enter when !e.KeyModifiers.HasFlag(KeyModifiers.Shift):
