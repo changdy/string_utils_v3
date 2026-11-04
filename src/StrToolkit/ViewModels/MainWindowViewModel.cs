@@ -88,8 +88,13 @@ public partial class MainWindowViewModel : ObservableObject
         _settings = settings;
     }
 
-    public void AddSolver(ISolver solver)
+    public bool AddSolver(ISolver solver)
     {
+        if (string.IsNullOrWhiteSpace(solver.Name) || Solvers.Any(x => x.Name == solver.Name))
+        {
+            return false;
+        }
+
         var item = new SolverItemViewModel(solver)
         {
             IsVisible = !_settings.Settings.SkipList.Contains(solver.Name)
@@ -99,6 +104,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             VisibleSolvers.Insert(0, item);
         }
+        return true;
     }
 
     public void SetSolverVisible(string name, bool visible)
@@ -120,6 +126,16 @@ public partial class MainWindowViewModel : ObservableObject
         {
             _hoveredSolver = null;
         }
+
+        if (visible)
+        {
+            _settings.Settings.SkipList.RemoveAll(x => x == name);
+        }
+        else if (!_settings.Settings.SkipList.Contains(name))
+        {
+            _settings.Settings.SkipList.Add(name);
+        }
+        _settings.Save();
 
         RebuildVisibleSolvers();
         RefreshPullOutState();

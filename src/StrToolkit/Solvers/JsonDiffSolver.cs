@@ -35,15 +35,11 @@ public sealed class JsonDiffSolver : ISolver
         {
             using var doc = JsonDocument.Parse(logs);
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() != 2)
+            if (!IsObjectPair(root))
             {
                 return 0;
             }
             var first = root[0];
-            if (first.ValueKind != JsonValueKind.Object)
-            {
-                return 0;
-            }
             if (first.EnumerateObject().Count() <= 1)
             {
                 return 0;
@@ -59,9 +55,20 @@ public sealed class JsonDiffSolver : ISolver
     public string Transfer(string logs, string[] arr, bool jsonFlag)
     {
         using var doc = JsonDocument.Parse(logs);
+        if (!IsObjectPair(doc.RootElement))
+        {
+            throw new ArgumentException("JSON Diff 需要包含两个对象的 JSON 数组", nameof(logs));
+        }
+
         var obj1 = JsonSerializer.Serialize(doc.RootElement[0], DiffJsonOptions);
         var obj2 = JsonSerializer.Serialize(doc.RootElement[1], DiffJsonOptions);
         _openDiff(obj1, obj2);
         return "正在打开差异对比... (如未找到VSCode将无法打开)";
     }
+
+    private static bool IsObjectPair(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Array &&
+        root.GetArrayLength() == 2 &&
+        root[0].ValueKind == JsonValueKind.Object &&
+        root[1].ValueKind == JsonValueKind.Object;
 }

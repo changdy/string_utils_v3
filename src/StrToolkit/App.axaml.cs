@@ -64,7 +64,10 @@ public partial class App : Application
         _viewModel = new MainWindowViewModel(_settings);
         foreach (var solver in BuildSolvers())
         {
-            _viewModel.AddSolver(solver);
+            if (!_viewModel.AddSolver(solver))
+            {
+                AppLog.Warn($"忽略名称为空或重复的处理器: name={solver.Name}, userScript={solver.IsUserScript}");
+            }
         }
 
         _mainWindow = new MainWindow { DataContext = _viewModel };
@@ -434,17 +437,7 @@ public partial class App : Application
             string name = item.Name;
             menuItem.Click += (_, _) =>
             {
-                bool nowChecked = menuItem.IsChecked;
-                if (nowChecked)
-                {
-                    _settings.Settings.SkipList.Remove(name);
-                }
-                else if (!_settings.Settings.SkipList.Contains(name))
-                {
-                    _settings.Settings.SkipList.Add(name);
-                }
-                _settings.Save();
-                _viewModel.SetSolverVisible(name, nowChecked);
+                _viewModel.SetSolverVisible(name, menuItem.IsChecked);
             };
             menu.Items.Add(menuItem);
         }

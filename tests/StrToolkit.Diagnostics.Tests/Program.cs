@@ -72,6 +72,7 @@ internal static class Program
                 Require(window.IsVisible, "内部点击隐藏了窗口");
             });
             TestHotkeyState();
+            FunctionalChecks.RunAll();
             Console.WriteLine("全部诊断回归检查通过。");
             return 0;
         }

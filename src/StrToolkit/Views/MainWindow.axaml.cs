@@ -21,9 +21,6 @@ public partial class MainWindow : Window
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
 
-    /// <summary>执行处理并写回剪贴板后触发（App 层负责 nextStep 之外的联动）。</summary>
-    public event Action? ExecuteRequested;
-
     /// <summary>修改快捷键模式下点击 Enter 保存时触发。</summary>
     public event Action<string>? HotkeySaveRequested;
 
@@ -255,7 +252,6 @@ public partial class MainWindow : Window
                     AppLog.Error("写入剪贴板失败", ex);
                 }
             });
-            ExecuteRequested?.Invoke();
         }
     }
 

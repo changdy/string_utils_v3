@@ -41,7 +41,7 @@
                                    IsHitTestVisible="False"
                                    TextWrapping="Wrap"
                                    Background="Transparent"
-                                   FontFamily="Maple Mono NF CN,Maple Mono,Sarasa Mono SC,LXGW WenKai Mono,JetBrains Mono,Cascadia Mono,Consolas,Menlo,monospace"
+                                   FontFamily="Maple Mono NF CN,Maple Mono CN,Sarasa Fixed SC,Sarasa Mono SC,Maple Mono,JetBrains Mono,Cascadia Mono,Consolas,Menlo,Microsoft YaHei,PingFang SC,monospace"
                                    FontSize="16"
                                    LineHeight="20"
                                    Padding="5" />

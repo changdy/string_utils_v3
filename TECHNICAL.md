@@ -85,6 +85,9 @@ installer/windows/
 dotnet run --project tests/StrToolkit.Diagnostics.Tests -c Release -p:PrepareWebAssetsOnBuild=false
 ```
 
+同一检查程序还覆盖处理器名称唯一性、显隐状态与配置保存，以及 JSON Diff 的自动匹配和
+手动执行校验。配置测试使用临时文件，不读取或改写实际用户配置。
+
 ## 用户脚本开发
 
 ### 脚本目录
@@ -224,15 +227,9 @@ npx esbuild src/index.js \
   --outfile=dist/index.js
 ```
 
-仓库中的 `user-scripts-src/decrypt` 是完整示例。它直接使用应用内置的 `crypto-js`，无需声明
-该运行依赖，也不需要 `package.json`、`npm install` 或 esbuild。目标机器不需要 Node.js、
-npm 或联网。
-
-示例测试没有第三方依赖，可以直接运行：
-
-```bash
-node --test user-scripts-src/decrypt/test/decrypt.test.mjs
-```
+直接使用宿主内置库的脚本无需声明这些运行依赖，也不需要 `package.json`、`npm install`
+或 esbuild。目标机器不需要 Node.js、npm 或联网。个人专用脚本由用户自行维护，不随仓库
+或安装包分发。
 
 ## JSON 预览资源
 
@@ -306,7 +303,7 @@ JSONCrack 的静态产物，不包含源码、`node_modules` 或包管理文件�
 创建对应的 `vX.Y.Z` 标签和 GitHub Release，并上传全部四个平台的软件包：
 
 ```xml
-<Version>4.0.10</Version>
+<Version>4.0.11</Version>
 ```
 
 如果版本标签已存在但指向其他提交，发布会直接失败，以免覆盖历史版本。

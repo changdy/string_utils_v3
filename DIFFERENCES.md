@@ -11,7 +11,7 @@
 | 图标交互动效 | CSS 无限渐变 + 图标 hover 360° 翻转 | Hover 时仅内部图标以透明度循环淡入淡出；点击保留压缩回弹与单次高光 | Hover 使用低干扰的呼吸灯提示，按钮尺寸和菜单布局保持稳定 |
 | Enter 按钮气泡动画 | bubbly-button CSS radial-gradient 粒子动画 | Avalonia 原生绘制的上下气泡散开 + 按钮缩放回弹 | 粒子轨迹不逐像素复刻，时长和整体观感接近 |
 | 文本区 | `contenteditable div` | `TextBox` | 行为基本一致；富文本粘贴会被转为纯文本 |
-| 字体 | 内嵌 JetBrainsMono woff2 | 按候选列表使用系统等宽字体 | 依次尝试 Maple Mono、Sarasa Mono、LXGW WenKai Mono、JetBrains Mono 等字体，最后回退到 `monospace` |
+| 字体 | 内嵌 JetBrainsMono woff2 | 按候选列表使用系统字体 | 优先尝试 Maple Mono 的中文版本、Sarasa Fixed/Mono SC 等等宽字体，并补充 Microsoft YaHei、PingFang SC 等中文回退，最后回退到 `monospace` |
 
 右侧功能图标透明度实现说明：
 
@@ -65,9 +65,8 @@ Jint 是纯 .NET 的 JS 解释器，**没有 Node.js 运行时**。与 Electron 
 `debounce` / `throttle` / `delay` / `defer` 等定时器 API 不受支持；Day.js 插件、语言包
 和完整浏览器时区行为也不在兼容范围内。`check` / `transfer` 仍为同步调用。
 
-客户端不实现具体用户脚本业务。随仓库提供的 decrypt 脚本包直接使用宿主内置 CryptoJS，
-并在 JS 内使用原生 BigInt 实现 RSA PKCS#1 v1.5。该目录只作为实现参考，不参与
-.NET 构建或应用发布；用户自行复制脚本文件后，开发和运行均不依赖 npm 或 Node.js 包。
+客户端不实现具体用户脚本业务。脚本可以直接使用宿主内置库，或在包内提供纯 JavaScript
+模块；个人专用脚本由用户自行维护，不随仓库或安装包分发。
 
 其他差异：
 

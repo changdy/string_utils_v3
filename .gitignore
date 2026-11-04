@@ -29,3 +29,7 @@ json-crack/
 coverage/
 .DS_Store
 Thumbs.db
+
+# Personal decryption scripts are kept locally.
+/decrypt.js
+/user-scripts-src/decrypt/
