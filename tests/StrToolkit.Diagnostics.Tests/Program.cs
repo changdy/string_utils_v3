@@ -72,6 +72,7 @@ internal static class Program
                 Require(window.IsVisible, "内部点击隐藏了窗口");
             });
             TestHotkeyState();
+            ModifierRecoveryChecks.RunAll();
             FunctionalChecks.RunAll();
             Console.WriteLine("全部诊断回归检查通过。");
             return 0;
@@ -109,7 +110,7 @@ internal static class Program
 
     private static void TestHotkeyState()
     {
-        using var service = new HotkeyService();
+        using var service = new HotkeyService(() => null);
         Require(service.Register("Ctrl+Alt+D"), "快捷键解析失败");
         Field(service, "_isAvailable").SetValue(service, true);
         int triggers = 0;

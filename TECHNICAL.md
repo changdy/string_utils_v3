@@ -67,6 +67,9 @@ installer/windows/
 |------|----------|
 | `Hotkey.Matched` | 底层已识别组合键，`trigger` 可关联 `Wake.Queued` |
 | `Hotkey.ModifierMismatch` / `Hotkey.RepeatIgnored` | 修饰键不完全匹配，或按键状态仍被判定为按住 |
+| `Hotkey.ModifierState` | 对照 `hookMask`、`systemMask`、`effectiveMask`；`systemConfirmed=true, recovered=true` 表示系统确认所需键已按下，并修正了导致拒绝的残留标记 |
+| `Hotkey.MetaPressed` / `Hotkey.MetaReleased` | 仅跟踪左右 Win/Meta 键按下与释放，辅助排查丢失的释放事件；`systemMaskBeforeEvent` 是当前事件更新前的系统状态 |
+| `Hotkey.SystemModifiersUnavailable` | 系统状态读取异常，保留原有钩子匹配行为 |
 | `Wake.Queued` / `Wake.Dispatched` | 用 `request` 串联唤醒；只有排队记录或排队耗时很长时检查 UI 阻塞 |
 | `Window.ShowReturned` / `Window.ForegroundResult` / `Wake.Verified` | 判断窗口是否显示、原生前台激活是否成功，以及 500 毫秒后的状态 |
 | `Window.Hide` | 明确区分失焦、外部点击、托盘切换和 Esc 导致的隐藏 |
@@ -76,6 +79,12 @@ installer/windows/
 `available=true` / `running=true` 仅表示库所报告的状态。Windows 可能在低级键盘钩子回调
 超时后静默移除钩子，不能仅凭这两个字段断言监听正常，需要对照事件计数及实际操作。
 系统行为见 [微软 LowLevelKeyboardProc 文档](https://learn.microsoft.com/en-us/windows/win32/winmsg/lowlevelkeyboardproc)。
+
+Windows 收到已配置的主键时，会通过 `GetAsyncKeyState` 最高位校验修饰键。只有所有必需
+修饰键都被系统确认处于按下状态，才使用系统标记重新判断精确组合；已经松开的 Win/Shift
+等残留标记可恢复，真正仍按住的额外键仍会拒绝。系统无法确认、查询失败或未配置修饰键时
+保留原有规则；macOS/Linux 继续使用钩子标记。日志和心跳包含最近的三种标记、恢复计数及
+最近 Win 键事件间隔。查询可能受桌面隔离/UIPI 限制，不将全零结果直接当作“所有键已松开”。
 
 窗口隐藏现在会在实际执行时复查唤醒代次和激活状态，丢弃在新一次唤醒之前排队的失焦和
 鼠标通知。以下回归检查使用 Avalonia Headless，不弹出真实窗口、不注册系统全局钩子、
@@ -303,7 +312,7 @@ JSONCrack 的静态产物，不包含源码、`node_modules` 或包管理文件�
 创建对应的 `vX.Y.Z` 标签和 GitHub Release，并上传全部四个平台的软件包：
 
 ```xml
-<Version>4.0.11</Version>
+<Version>4.0.12</Version>
 ```
 
 如果版本标签已存在但指向其他提交，发布会直接失败，以免覆盖历史版本。

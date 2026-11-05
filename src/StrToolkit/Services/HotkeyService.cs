@@ -19,8 +19,11 @@ public sealed class HotkeyService : IDisposable
     private const long HotkeyLatchRecoveryMilliseconds = 3_000;
     private const int HookRestartDelayMilliseconds = 1_000;
     private const int HookRestartMaxDelayMilliseconds = 30_000;
+    private const ModifierMask KeyboardModifiers =
+        ModifierMask.Ctrl | ModifierMask.Alt | ModifierMask.Shift | ModifierMask.Meta;
 
     private readonly SimpleGlobalHook _hook;
+    private readonly Func<ModifierMask?> _readSystemModifiers;
     private readonly TaskCompletionSource<bool> _startup =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -40,6 +43,16 @@ public sealed class HotkeyService : IDisposable
     private long _pressSequence;
     private long _lastMismatchLogAt;
     private int _repeatWasLogged;
+    private long _lastModifierCheckAt;
+    private int _lastHookModifiers;
+    private int _lastSystemModifiers = -1;
+    private int _lastEffectiveModifiers;
+    private long _modifierRecoveryCount;
+    private long _lastModifierAdjustmentLogAt;
+    private long _lastSystemReadFailureAt;
+    private long _lastMetaEventAt;
+    private int _lastMetaKey;
+    private int _lastMetaDown;
 
     public bool IsAvailable => _isAvailable;
     public string? LastError => _lastError;
@@ -52,8 +65,13 @@ public sealed class HotkeyService : IDisposable
     /// <summary>全局鼠标按下（屏幕坐标），用于点击窗口外自动隐藏。</summary>
     public event Action<int, int>? GlobalMousePressed;
 
-    public HotkeyService()
+    public HotkeyService() : this(WindowsModifierState.Read)
     {
+    }
+
+    internal HotkeyService(Func<ModifierMask?> readSystemModifiers)
+    {
+        _readSystemModifiers = readSystemModifiers;
         // 事件处理器都很短；使用同步分发可在 Windows/macOS 上阻止匹配按键继续传给前台应用。
         _hook = new SimpleGlobalHook(runAsyncOnBackgroundThread: true);
         _hook.HookEnabled += OnHookEnabled;
@@ -71,7 +89,7 @@ public sealed class HotkeyService : IDisposable
             return await _startup.Task.ConfigureAwait(false);
         }
 
-        AppLog.Info("Hotkey.Start: 请求启动全局监听。");
+        AppLog.Info($"Hotkey.Start: 请求启动全局监听，systemModifierValidation={OperatingSystem.IsWindows()}");
         if (IsWaylandSession())
         {
             SetUnavailable("Linux Wayland 不允许普通应用静默监听全局快捷键，请使用托盘入口或切换到 X11 会话。");
@@ -193,22 +211,26 @@ public sealed class HotkeyService : IDisposable
     {
         Interlocked.Increment(ref _keyboardEventCount);
         Interlocked.Exchange(ref _lastKeyboardEventAt, Environment.TickCount64);
+        RecordMetaEvent(e, pressed: true);
         var binding = Volatile.Read(ref _binding);
         if (!_isAvailable || binding is null || e.Data.KeyCode != binding.Key)
         {
             return;
         }
 
-        if (!HasExactModifiers(e.RawEvent.Mask, binding.Modifiers))
+        ModifierMask? systemMask = ReadSystemModifiers();
+        ModifierMask effectiveMask = ResolveModifiers(e.RawEvent.Mask, systemMask, binding);
+        if (!HasExactModifiers(effectiveMask, binding.Modifiers))
         {
             // 只记录带修饰键的候选组合，不记录普通文本输入；长按时限制日志频率。
             long mismatchAt = Environment.TickCount64;
-            if ((e.RawEvent.Mask & (ModifierMask.Ctrl | ModifierMask.Alt | ModifierMask.Shift | ModifierMask.Meta)) != 0 &&
+            if (((e.RawEvent.Mask | effectiveMask) & KeyboardModifiers) != 0 &&
                 mismatchAt - _lastMismatchLogAt >= 1_000)
             {
                 _lastMismatchLogAt = mismatchAt;
                 AppLog.Info($"Hotkey.ModifierMismatch: key={binding.Key}, mask={e.RawEvent.Mask}, " +
-                            $"required={string.Join('+', binding.Modifiers)}");
+                            $"systemMask={FormatMask(systemMask)}, effectiveMask={effectiveMask}, " +
+                            $"required={string.Join('+', binding.Modifiers)}, {GetMetaDiagnosticState()}");
             }
             // 同一主键以普通按键形式再次按下，说明上一轮物理按键已经结束，即使它的
             // KeyUp 曾被漏报也不应继续保留闩锁或抑制下一次普通 KeyUp。
@@ -239,7 +261,8 @@ public sealed class HotkeyService : IDisposable
         Interlocked.Exchange(ref _suppressMainKeyUp, 1);
         SuppressIfSupported(e);
         long sequence = Interlocked.Increment(ref _pressSequence);
-        AppLog.Info($"Hotkey.Matched: trigger={sequence}, key={binding.Key}, mask={e.RawEvent.Mask}");
+        AppLog.Info($"Hotkey.Matched: trigger={sequence}, key={binding.Key}, mask={effectiveMask}, " +
+                    $"hookMask={e.RawEvent.Mask}, systemMask={FormatMask(systemMask)}");
         try
         {
             HotkeyPressed?.Invoke(sequence);
@@ -254,6 +277,7 @@ public sealed class HotkeyService : IDisposable
     {
         Interlocked.Increment(ref _keyboardEventCount);
         Interlocked.Exchange(ref _lastKeyboardEventAt, Environment.TickCount64);
+        RecordMetaEvent(e, pressed: false);
         var binding = Volatile.Read(ref _binding);
         if (binding is null)
         {
@@ -295,6 +319,79 @@ public sealed class HotkeyService : IDisposable
         Interlocked.Exchange(ref _repeatWasLogged, 0);
     }
 
+    private ModifierMask? ReadSystemModifiers()
+    {
+        try
+        {
+            return _readSystemModifiers();
+        }
+        catch (Exception exception)
+        {
+            long now = Environment.TickCount64;
+            if (now - _lastSystemReadFailureAt >= 1_000)
+            {
+                _lastSystemReadFailureAt = now;
+                AppLog.Error("Hotkey.SystemModifiersUnavailable: 保留钩子标记。", exception);
+            }
+            return null;
+        }
+    }
+
+    private ModifierMask ResolveModifiers(ModifierMask hookMask, ModifierMask? systemMask, HotkeyBinding binding)
+    {
+        // GetAsyncKeyState 在桌面隔离/UIPI 等受限情况下也可能全部返回 0。
+        // 只有系统正向确认所有必需修饰键都按下时才采用它；单键快捷键保持原规则。
+        bool confirmed = binding.Modifiers.Count > 0 && systemMask.HasValue &&
+                         binding.Modifiers.All(modifier => (systemMask.Value & modifier) != ModifierMask.None);
+        ModifierMask effective = confirmed
+            ? (hookMask & ~KeyboardModifiers) | (systemMask!.Value & KeyboardModifiers)
+            : hookMask;
+
+        Volatile.Write(ref _lastHookModifiers, (int)(hookMask & KeyboardModifiers));
+        Volatile.Write(ref _lastSystemModifiers, systemMask.HasValue ? (int)systemMask.Value : -1);
+        Volatile.Write(ref _lastEffectiveModifiers, (int)(effective & KeyboardModifiers));
+        Interlocked.Exchange(ref _lastModifierCheckAt, Environment.TickCount64);
+
+        bool recovered = !HasExactModifiers(hookMask, binding.Modifiers) &&
+                         HasExactModifiers(effective, binding.Modifiers);
+        if (recovered) Interlocked.Increment(ref _modifierRecoveryCount);
+
+        long now = Environment.TickCount64;
+        if (systemMask.HasValue && (hookMask & KeyboardModifiers) != (systemMask.Value & KeyboardModifiers) &&
+            now - _lastModifierAdjustmentLogAt >= 1_000)
+        {
+            _lastModifierAdjustmentLogAt = now;
+            AppLog.Info($"Hotkey.ModifierState: hookMask={hookMask}, systemMask={systemMask.Value}, " +
+                        $"effectiveMask={effective}, systemConfirmed={confirmed}, recovered={recovered}, " +
+                        $"required={string.Join('+', binding.Modifiers)}, {GetMetaDiagnosticState()}");
+        }
+        return effective;
+    }
+
+    private void RecordMetaEvent(KeyboardHookEventArgs e, bool pressed)
+    {
+        if (e.Data.KeyCode is not (KeyCode.VcLeftMeta or KeyCode.VcRightMeta)) return;
+
+        // 长按自动重复不刷屏；不记录普通按键或正文。
+        long now = Environment.TickCount64;
+        if (pressed && Volatile.Read(ref _lastMetaDown) != 0 && Volatile.Read(ref _lastMetaKey) == (int)e.Data.KeyCode &&
+            now - Interlocked.Read(ref _lastMetaEventAt) < 1_000) return;
+        Volatile.Write(ref _lastMetaKey, (int)e.Data.KeyCode);
+        Volatile.Write(ref _lastMetaDown, pressed ? 1 : 0);
+        Interlocked.Exchange(ref _lastMetaEventAt, now);
+        AppLog.Info($"Hotkey.Meta{(pressed ? "Pressed" : "Released")}: key={e.Data.KeyCode}, " +
+                    $"hookMask={e.RawEvent.Mask}, systemMaskBeforeEvent={FormatMask(ReadSystemModifiers())}");
+    }
+
+    private string GetMetaDiagnosticState()
+    {
+        long changedAt = Interlocked.Read(ref _lastMetaEventAt);
+        return $"lastMetaKey={(KeyCode)Volatile.Read(ref _lastMetaKey)}, lastMetaDown={Volatile.Read(ref _lastMetaDown)}, " +
+               $"metaEventAgeMs={(changedAt == 0 ? -1 : Environment.TickCount64 - changedAt)}";
+    }
+
+    private static string FormatMask(ModifierMask? mask) => mask?.ToString() ?? "unavailable";
+
     /// <summary>只包含计数和时间，不记录用户输入的按键序列。</summary>
     internal string GetDiagnosticState()
     {
@@ -302,11 +399,17 @@ public sealed class HotkeyService : IDisposable
         long now = Environment.TickCount64;
         long keyboardAt = Interlocked.Read(ref _lastKeyboardEventAt);
         long mouseAt = Interlocked.Read(ref _lastMousePressAt);
+        long modifierAt = Interlocked.Read(ref _lastModifierCheckAt);
+        int systemModifiers = Volatile.Read(ref _lastSystemModifiers);
         return $"available={_isAvailable}, running={_hook.IsRunning}, generation={Volatile.Read(ref _hookEnableGeneration)}, " +
                $"key={binding?.Key}, latch={Volatile.Read(ref _hotkeyDown)}, " +
                $"keyboardEvents={Interlocked.Read(ref _keyboardEventCount)}, keyboardAgeMs={(keyboardAt == 0 ? -1 : now - keyboardAt)}, " +
                $"mousePresses={Interlocked.Read(ref _mousePressCount)}, mouseAgeMs={(mouseAt == 0 ? -1 : now - mouseAt)}, " +
-               $"triggers={Interlocked.Read(ref _pressSequence)}, error={_lastError}";
+               $"triggers={Interlocked.Read(ref _pressSequence)}, modifierRecoveries={Interlocked.Read(ref _modifierRecoveryCount)}, " +
+               $"lastHookModifiers={(ModifierMask)Volatile.Read(ref _lastHookModifiers)}, " +
+               $"lastSystemModifiers={(systemModifiers < 0 ? "unavailable" : ((ModifierMask)systemModifiers).ToString())}, " +
+               $"lastEffectiveModifiers={(ModifierMask)Volatile.Read(ref _lastEffectiveModifiers)}, " +
+               $"modifierCheckAgeMs={(modifierAt == 0 ? -1 : now - modifierAt)}, {GetMetaDiagnosticState()}, error={_lastError}";
     }
 
     private static bool IsRequiredModifierKey(HotkeyBinding binding, KeyCode key)
