@@ -126,7 +126,7 @@ internal sealed class ApiEndpoints
                 string raw = document.Type == DocumentType.Raw
                     ? document.Contents!
                     : await _remoteFetcher.FetchTextAsync(document.Url!, context.RequestAborted);
-                using var _ = JsonDocument.Parse(raw);
+                using var _ = JsonDocument.Parse(raw, JsonSettings.DocumentOptions);
                 return Results.Text(raw, "application/json", Encoding.UTF8);
             }
             catch (Exception e) when (e is JsonException or HttpRequestException)
@@ -147,7 +147,7 @@ internal sealed class ApiEndpoints
                 string raw = document.Type == DocumentType.Raw
                     ? document.Contents!
                     : await _remoteFetcher.FetchTextAsync(document.Url!, context.RequestAborted);
-                JsonElement json = JsonSerializer.Deserialize<JsonElement>(raw);
+                JsonElement json = JsonSerializer.Deserialize<JsonElement>(raw, JsonSettings.DocumentSerializerOptions);
                 string? path = NormalizePath(context.Request.Query["path"].FirstOrDefault());
                 bool minimal = ParseBoolean(context.Request.Query["minimal"].FirstOrDefault());
                 return Success(new { doc = ToApiDocument(document), json, path, minimal });
@@ -294,7 +294,9 @@ internal sealed class ApiEndpoints
         {
             return await context.Request.ReadFromJsonAsync<T>(new JsonSerializerOptions
             {
-                PropertyNameCaseInsensitive = true
+                PropertyNameCaseInsensitive = true,
+                // 请求格式 { content: ... } 比原始文档多一层。
+                MaxDepth = JsonSettings.MaxDocumentDepth + 1
             });
         }
         catch (JsonException)
@@ -303,7 +305,8 @@ internal sealed class ApiEndpoints
         }
     }
 
-    private static IResult Success(object data) => Results.Json(new { success = true, data });
+    private static IResult Success(object data) =>
+        Results.Json(new { success = true, data }, JsonSettings.ResponseSerializerOptions);
 
     private static IResult Error(int status, string code, string message) =>
         Results.Json(new { success = false, error = new { code, message } }, statusCode: status);
@@ -355,7 +358,7 @@ internal sealed class ApiEndpoints
         {
             [document.Root.Name.LocalName] = ConvertXmlElement(document.Root)
         };
-        return JsonSerializer.Serialize(converted);
+        return JsonSerializer.Serialize(converted, JsonSettings.DocumentSerializerOptions);
     }
 
     private static object? ConvertXmlElement(XElement element)

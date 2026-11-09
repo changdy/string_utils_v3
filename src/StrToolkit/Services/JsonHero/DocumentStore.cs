@@ -27,7 +27,7 @@ internal sealed class DocumentStore
 
     public StoredDocument CreateRaw(string title, string contents, TimeSpan? ttl, bool readOnly)
     {
-        using var _ = JsonDocument.Parse(contents);
+        using var _ = JsonDocument.Parse(contents, JsonSettings.DocumentOptions);
         DateTimeOffset now = _timeProvider.GetUtcNow();
         var document = new StoredDocument(
             CreateId(),

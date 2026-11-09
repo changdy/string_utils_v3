@@ -71,7 +71,7 @@ internal sealed class RemoteFetcher
         if (mimeType.Contains("json", StringComparison.OrdinalIgnoreCase))
         {
             string rawJson = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            JsonElement json = JsonSerializer.Deserialize<JsonElement>(rawJson);
+            JsonElement json = JsonSerializer.Deserialize<JsonElement>(rawJson, JsonSettings.DocumentSerializerOptions);
             return new { url, contentType = "json", json };
         }
         if (mimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))

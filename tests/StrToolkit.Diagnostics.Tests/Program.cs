@@ -74,6 +74,7 @@ internal static class Program
             TestHotkeyState();
             ModifierRecoveryChecks.RunAll();
             FunctionalChecks.RunAll();
+            JsonHeroChecks.RunAll();
             Console.WriteLine("全部诊断回归检查通过。");
             return 0;
         }
