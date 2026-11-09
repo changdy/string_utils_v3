@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Notifications;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -42,6 +43,23 @@ public partial class MainWindow : Window
     private int _clipboardLoadGeneration;
     private int _enterAnimationGeneration;
     private readonly Dictionary<Control, int> _solverAnimationGenerations = new();
+    private WindowNotificationManager? _notifications;
+
+    public void ShowPreviewError(string message)
+    {
+        MarkWake("json-preview-error");
+        if (WindowState == WindowState.Minimized)
+            WindowState = WindowState.Normal;
+        Show();
+        Activate();
+        _notifications ??= new WindowNotificationManager(this)
+        {
+            Position = NotificationPosition.BottomLeft,
+            MaxItems = 1
+        };
+        _notifications.Show(new Notification("JSON 预览未能全部打开", message,
+            NotificationType.Error, TimeSpan.Zero));
+    }
 
     /// <summary>唤醒显示前调用：短时间内忽略激活过程中的瞬时失焦，避免窗口闪烁。</summary>
     public void MarkWake(string source, long requestId = 0)

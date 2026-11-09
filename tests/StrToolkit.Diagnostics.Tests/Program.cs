@@ -5,6 +5,7 @@ using Avalonia.Headless;
 using Avalonia.Platform;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using SharpHook;
 using SharpHook.Native;
 using StrToolkit.Services;
@@ -75,6 +76,16 @@ internal static class Program
             ModifierRecoveryChecks.RunAll();
             FunctionalChecks.RunAll();
             JsonHeroChecks.RunAll();
+            JsonPreviewChecks.RunAll();
+            Run("JSON 预览错误唤醒窗口", window =>
+            {
+                window.Hide();
+                window.ShowPreviewError("JSON Hero：本机预览服务尚未启动，请稍后重试。");
+                Dispatcher.UIThread.RunJobs();
+                Require(window.IsVisible, "预览失败通知仍留在隐藏窗口中");
+                Require(window.GetVisualDescendants().OfType<TextBlock>().Any(
+                    text => text.Text?.Contains("本机预览服务尚未启动") == true), "窗口没有显示具体失败原因");
+            });
             Console.WriteLine("全部诊断回归检查通过。");
             return 0;
         }

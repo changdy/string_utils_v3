@@ -72,6 +72,7 @@ public partial class App : Application
 
         _mainWindow = new MainWindow { DataContext = _viewModel };
         _mainWindow.HotkeySaveRequested += OnHotkeySaveRequested;
+        _preview.PreviewFailed += message => Dispatcher.UIThread.Post(() => _mainWindow.ShowPreviewError(message));
 
         SetupHotkey();
         SetupTray();
